@@ -34,7 +34,6 @@ public class HdfsFileInputPlugin implements FileInputPlugin
         public Map<String, String> getConfig();
 
         @Config("input_path")
-        @ConfigDefault("\"/tmp/embulk.input.hdfs_input.%Y%m%d_%s/*.gz/*\"")
         public String getInputPath();
 
         @Config("rewind_seconds")
@@ -107,11 +106,14 @@ public class HdfsFileInputPlugin implements FileInputPlugin
     {
         Configuration configuration = new Configuration();
 
-        for (Object configFile : task.getConfigFiles()) configuration.addResource(configFile.toString());
+        for (Object configFile : task.getConfigFiles()) {
+            configuration.addResource(configFile.toString());
+        }
         configuration.reloadConfiguration();
 
-        for (Map.Entry<String, String> entry: task.getConfig().entrySet())
+        for (Map.Entry<String, String> entry: task.getConfig().entrySet()) {
             configuration.set(entry.getKey(), entry.getValue());
+        }
 
         return configuration;
     }
@@ -139,17 +141,27 @@ public class HdfsFileInputPlugin implements FileInputPlugin
     private List<String> globRecursive(final FileSystem fs, final Path hdfsPath) throws IOException
     {
         List<String> container = new ArrayList<String>();
-        for (FileStatus entry : fs.globStatus(hdfsPath))
-            if (entry.isDirectory()) container.addAll(listRecursive(fs, entry));
-            else container.add(entry.getPath().toString());
+        for (FileStatus entry : fs.globStatus(hdfsPath)) {
+            if (entry.isDirectory()) {
+                container.addAll(listRecursive(fs, entry));
+            }
+            else {
+                container.add(entry.getPath().toString());
+            }
+        }
         return container;
     }
 
     private List<String> listRecursive(final FileSystem fs, FileStatus status) throws IOException {
         List<String> container = new ArrayList<String>();
-        if (status.isDirectory())
-            for (FileStatus entry : fs.listStatus(status.getPath())) container.addAll(listRecursive(fs, entry));
-        else container.add(status.getPath().toString());
+        if (status.isDirectory()) {
+            for (FileStatus entry : fs.listStatus(status.getPath())) {
+                container.addAll(listRecursive(fs, entry));
+            }
+        }
+        else {
+            container.add(status.getPath().toString());
+        }
         return container;
     }
 
@@ -170,7 +182,7 @@ public class HdfsFileInputPlugin implements FileInputPlugin
         {
             private final FileSystem fs;
             private final Path hdfsPath;
-            private boolean opend = false;
+            private boolean opened = false;
 
             public HdfsFileProvider(PluginTask task, FileSystem fs, int taskIndex)
             {
@@ -181,9 +193,11 @@ public class HdfsFileInputPlugin implements FileInputPlugin
             @Override
             public InputStream openNext() throws IOException
             {
-                if (opend) return null;
+                if (opened) {
+                    return null;
+                }
 
-                opend = true;
+                opened = true;
                 return fs.open(hdfsPath);
             }
 
