@@ -1,30 +1,64 @@
 # Hdfs file input plugin for Embulk
 
-TODO: Write short description here and build.gradle file.
+Read files on Hdfs.
 
 ## Overview
 
 * **Plugin type**: file input
-* **Resume supported**: yes
-* **Cleanup supported**: yes
+* **Resume supported**: not yet
+* **Cleanup supported**: no
 
 ## Configuration
 
-- **property1**: description (string, required)
-- **property2**: description (integer, default: default-value)
+- **config_files** list of paths to Hadoop's configuration files (array of strings, default: `[]`)
+- **config** overwrites configuration parameters (hash, default: `{}`)
+- **input_path** file path on Hdfs. you can use glob and Date format like `%Y%m%d/%s`.
+- **rewind_seconds** When you use Date format in input_path property, the format is executed by using the time which is Now minus this property.
 
 ## Example
 
 ```yaml
 in:
   type: hdfs
-  property1: example1
-  property2: example2
+  config_files:
+    - /opt/analytics/etc/hadoop/conf/core-site.xml
+    - /opt/analytics/etc/hadoop/conf/hdfs-site.xml
+  config:
+    fs.defaultFS: 'hdfs://hdp-nn1:8020'
+    dfs.replication: 1
+    fs.hdfs.impl: 'org.apache.hadoop.hdfs.DistributedFileSystem'
+    fs.file.impl: 'org.apache.hadoop.fs.LocalFileSystem'
+  input_path: /user/embulk/test/%Y-%m-%d/*
+  rewind_seconds: 86400
+  decoders:
+    - {type: gzip}
+  parser:
+    charset: UTF-8
+    newline: CRLF
+    type: csv
+    delimiter: "\t"
+    quote: ''
+    escape: ''
+    trim_if_not_quoted: true
+    skip_header_lines: 0
+    allow_extra_columns: true
+    allow_optional_columns: true
+    columns:
+    - {name: c0, type: string}
+    - {name: c1, type: string}
+    - {name: c2, type: string}
+    - {name: c3, type: long}
 ```
-
 
 ## Build
 
 ```
 $ ./gradlew gem
+```
+
+## Development
+
+```
+$ ./gradlew classpath
+$ bundle exec embulk run -I lib example.yml
 ```
