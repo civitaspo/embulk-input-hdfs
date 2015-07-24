@@ -12,7 +12,10 @@ configurations {
     provided
 }
 
-version = "0.0.1"
+version = "0.0.2"
+
+sourceCompatibility = 1.7
+targetCompatibility = 1.7
 
 dependencies {
     compile  "org.embulk:embulk-core:0.6.16"
