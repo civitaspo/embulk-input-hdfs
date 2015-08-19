@@ -12,14 +12,14 @@ configurations {
     provided
 }
 
-version = "0.0.2"
+version = "0.0.3"
 
 sourceCompatibility = 1.7
 targetCompatibility = 1.7
 
 dependencies {
-    compile  "org.embulk:embulk-core:0.6.16"
-    provided "org.embulk:embulk-core:0.6.16"
+    compile  "org.embulk:embulk-core:0.7.0"
+    provided "org.embulk:embulk-core:0.7.0"
     // compile "YOUR_JAR_DEPENDENCY_GROUP:YOUR_JAR_DEPENDENCY_MODULE:YOUR_JAR_DEPENDENCY_VERSION"
     compile 'org.apache.hadoop:hadoop-client:2.6.0'
     compile 'com.google.guava:guava:14.0'

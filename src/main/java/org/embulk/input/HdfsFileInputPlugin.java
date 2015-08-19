@@ -86,7 +86,7 @@ public class HdfsFileInputPlugin implements FileInputPlugin
     @Override
     public void cleanup(TaskSource taskSource,
                         int taskCount,
-                        List<CommitReport> successCommitReports)
+                        List<TaskReport> successTaskReports)
     {
     }
 
@@ -223,9 +223,9 @@ public class HdfsFileInputPlugin implements FileInputPlugin
         }
 
         @Override
-        public CommitReport commit()
+        public TaskReport commit()
         {
-            return Exec.newCommitReport();
+            return Exec.newTaskReport();
         }
     }
 }
