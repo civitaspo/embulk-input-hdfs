@@ -65,8 +65,10 @@ public class HdfsFileInputPlugin implements FileInputPlugin
         // listing Files
         String pathString = strftime(task.getInputPath(), task.getRewindSeconds());
         try {
+            // TODO: Create PartitionedFileList for using MultiThread
             task.setFiles(buildFileList(getFs(task), pathString));
-        } catch (IOException e) {
+        }
+        catch (IOException e) {
             logger.error(e.getMessage());
             throw new RuntimeException(e);
         }
@@ -75,25 +77,71 @@ public class HdfsFileInputPlugin implements FileInputPlugin
         // number of processors is same with number of targets
         int taskCount = task.getFiles().size();
 
-        // usually, taskCount is number of input files.
-        //task.setFiles(listFiles(task));
-        //int taskCount = task.getFiles().size();
-
         return resume(task.dump(), taskCount, control);
     }
 
-    // usually, you have an method to create list of files
-    //List<String> listFiles(PluginTask task)
-    //{
-    //    final ImmutableList.Builder<String> builder = ImmutableList.builder();
-    //    for (String path : listFilesWithPrefix(task.getPathPrefix())) {
-    //        if (task.getLastPath().isPresent() && path.compareTo(task.getLastPath().get())) {
-    //            continue;
-    //        }
-    //        builder.add(path);
-    //    }
-    //    return builder.build();
-    //}
+    @Override
+    public ConfigDiff resume(TaskSource taskSource,
+                             int taskCount,
+                             FileInputPlugin.Control control)
+    {
+        control.run(taskSource, taskCount);
+
+        ConfigDiff configDiff = Exec.newConfigDiff();
+
+        // usually, yo uset last_path
+        //if (task.getFiles().isEmpty()) {
+        //    if (task.getLastPath().isPresent()) {
+        //        configDiff.set("last_path", task.getLastPath().get());
+        //    }
+        //} else {
+        //    List<String> files = new ArrayList<String>(task.getFiles());
+        //    Collections.sort(files);
+        //    configDiff.set("last_path", files.get(files.size() - 1));
+        //}
+
+        return configDiff;
+    }
+
+    @Override
+    public void cleanup(TaskSource taskSource,
+                        int taskCount,
+                        List<TaskReport> successTaskReports)
+    {
+    }
+
+    @Override
+    public TransactionalFileInput open(TaskSource taskSource, int taskIndex)
+    {
+        final PluginTask task = taskSource.loadTask(PluginTask.class);
+
+        InputStream input;
+        try {
+            input = openInputStream(task, task.getFiles().get(taskIndex));
+        }
+        catch (IOException e) {
+            logger.error(e.getMessage());
+            throw new RuntimeException(e);
+        }
+
+        return new InputStreamTransactionalFileInput(task.getBufferAllocator(), input) {
+            @Override
+            public void abort()
+            { }
+
+            @Override
+            public TaskReport commit()
+            {
+                return Exec.newTaskReport();
+            }
+        };
+    }
+
+    // TODO: use PartitionedFileInputStream
+    private static InputStream openInputStream(PluginTask task, String path) throws IOException
+    {
+        return getFs(task).open(new Path(path));
+    }
 
     private static FileSystem getFs(final PluginTask task) throws IOException {
         Configuration configuration = new Configuration();
@@ -154,64 +202,4 @@ public class HdfsFileInputPlugin implements FileInputPlugin
 //        return uniqueFileList;
 //    }
 
-
-    @Override
-    public ConfigDiff resume(TaskSource taskSource,
-                             int taskCount,
-                             FileInputPlugin.Control control)
-    {
-        control.run(taskSource, taskCount);
-
-        ConfigDiff configDiff = Exec.newConfigDiff();
-
-        // usually, yo uset last_path
-        //if (task.getFiles().isEmpty()) {
-        //    if (task.getLastPath().isPresent()) {
-        //        configDiff.set("last_path", task.getLastPath().get());
-        //    }
-        //} else {
-        //    List<String> files = new ArrayList<String>(task.getFiles());
-        //    Collections.sort(files);
-        //    configDiff.set("last_path", files.get(files.size() - 1));
-        //}
-
-        return configDiff;
-    }
-
-    @Override
-    public void cleanup(TaskSource taskSource,
-                        int taskCount,
-                        List<TaskReport> successTaskReports)
-    {
-    }
-
-    @Override
-    public TransactionalFileInput open(TaskSource taskSource, int taskIndex)
-    {
-        final PluginTask task = taskSource.loadTask(PluginTask.class);
-
-        InputStream input;
-        try {
-            input = openInputStream(task, task.getFiles().get(taskIndex));
-        } catch (IOException e) {
-            logger.error(e.getMessage());
-            throw new RuntimeException(e);
-        }
-
-        return new InputStreamTransactionalFileInput(task.getBufferAllocator(), input) {
-            @Override
-            public void abort()
-            { }
-
-            @Override
-            public TaskReport commit()
-            {
-                return Exec.newTaskReport();
-            }
-        };
-    }
-
-    private static InputStream openInputStream(PluginTask task, String path) throws IOException {
-        return getFs(task).open(new Path(path));
-    }
 }
