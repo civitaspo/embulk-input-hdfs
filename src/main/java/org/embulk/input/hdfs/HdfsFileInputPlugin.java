@@ -50,11 +50,8 @@ public class HdfsFileInputPlugin implements FileInputPlugin
         @ConfigDefault("0")
         public int getRewindSeconds();
 
-        public List<Path> getHdfsFiles();
-        public void setHdfsFiles(List<Path> hdfsFiles);
-
-        public FileSystem getHdfs();
-        public void setHdfs(FileSystem hdfs);
+        public List<String> getFiles();
+        public void setFiles(List<String> hdfsFiles);
 
         @ConfigInject
         public BufferAllocator getBufferAllocator();
@@ -65,29 +62,18 @@ public class HdfsFileInputPlugin implements FileInputPlugin
     {
         PluginTask task = config.loadConfig(PluginTask.class);
 
-        // prepare: set FileSystem
-        try {
-            Configuration configuration = getHdfsConfiguration(task);
-            FileSystem hdfs = FileSystem.get(configuration);
-            task.setHdfs(hdfs);
-        }
-        catch (IOException e) {
-            logger.error(e.getMessage());
-            throw new RuntimeException(e);
-        }
-
         // listing Files
         String pathString = strftime(task.getInputPath(), task.getRewindSeconds());
         try {
-            task.setHdfsFiles(buildFileList(task, pathString));
+            task.setFiles(buildFileList(getFs(task), pathString));
         } catch (IOException e) {
             logger.error(e.getMessage());
             throw new RuntimeException(e);
         }
-        logger.info("Loading target files: {}", task.getHdfsFiles());
+        logger.info("Loading target files: {}", task.getFiles());
 
         // number of processors is same with number of targets
-        int taskCount = task.getHdfsFiles().size();
+        int taskCount = task.getFiles().size();
 
         // usually, taskCount is number of input files.
         //task.setFiles(listFiles(task));
@@ -109,8 +95,7 @@ public class HdfsFileInputPlugin implements FileInputPlugin
     //    return builder.build();
     //}
 
-    private Configuration getHdfsConfiguration(final PluginTask task)
-    {
+    private static FileSystem getFs(final PluginTask task) throws IOException {
         Configuration configuration = new Configuration();
 
         for (Object configFile : task.getConfigFiles()) {
@@ -122,7 +107,7 @@ public class HdfsFileInputPlugin implements FileInputPlugin
             configuration.set(entry.getKey(), entry.getValue());
         }
 
-        return configuration;
+        return FileSystem.get(configuration);
     }
 
     private String strftime(final String raw, final int rewind_seconds)
@@ -133,29 +118,29 @@ public class HdfsFileInputPlugin implements FileInputPlugin
         return resolved.toString();
     }
 
-    private List<Path> buildFileList(final PluginTask task, final String pathString) throws IOException
+    private List<String> buildFileList(final FileSystem fs, final String pathString) throws IOException
     {
-        List<Path> fileList = new ArrayList<>();
-        for (FileStatus entry : task.getHdfs().globStatus(new Path(pathString))) {
+        List<String> fileList = new ArrayList<>();
+        for (FileStatus entry : fs.globStatus(new Path(pathString))) {
             if (entry.isDirectory()) {
-                fileList.addAll(lsr(task.getHdfs(), entry));
+                fileList.addAll(lsr(fs, entry));
             } else {
-                fileList.add(entry.getPath());
+                fileList.add(entry.getPath().toString());
             }
         }
         return fileList;
     }
 
-    private List<Path> lsr(final FileSystem fs, FileStatus status) throws IOException
+    private List<String> lsr(final FileSystem fs, FileStatus status) throws IOException
     {
-        List<Path> fileList = new ArrayList<>();
+        List<String> fileList = new ArrayList<>();
         if (status.isDirectory()) {
             for (FileStatus entry : fs.listStatus(status.getPath())) {
                 fileList.addAll(lsr(fs, entry));
             }
         }
         else {
-            fileList.add(status.getPath());
+            fileList.add(status.getPath().toString());
         }
         return fileList;
     }
@@ -207,7 +192,7 @@ public class HdfsFileInputPlugin implements FileInputPlugin
 
         InputStream input;
         try {
-            input = openInputStream(task, task.getHdfsFiles().get(taskIndex));
+            input = openInputStream(task, task.getFiles().get(taskIndex));
         } catch (IOException e) {
             logger.error(e.getMessage());
             throw new RuntimeException(e);
@@ -226,7 +211,7 @@ public class HdfsFileInputPlugin implements FileInputPlugin
         };
     }
 
-    private static InputStream openInputStream(PluginTask task, Path path) throws IOException {
-        return task.getHdfs().open(path);
+    private static InputStream openInputStream(PluginTask task, String path) throws IOException {
+        return getFs(task).open(new Path(path));
     }
 }
