@@ -10,7 +10,7 @@ import java.util.List;
 /**
  * Created by takahiro.nakayama on 8/20/15.
  */
-class HdfsFilePartitioner
+public class HdfsFilePartitioner
 {
     private FileSystem fs;
     private Path path;

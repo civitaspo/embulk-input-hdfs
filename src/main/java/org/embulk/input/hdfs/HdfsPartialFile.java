@@ -6,7 +6,7 @@ import org.apache.hadoop.fs.Path;
  * Created by takahiro.nakayama on 8/20/15.
  */
 // ref. https://github.com/hito4t/embulk-input-filesplit/blob/master/src/main/java/org/embulk/input/filesplit/PartialFile.java
-class HdfsPartialFile
+public class HdfsPartialFile
 {
     private Path path;
     private long start;

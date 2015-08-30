@@ -6,7 +6,7 @@ import java.io.InputStream;
 import java.io.PushbackInputStream;
 
 // ref. https://github.com/hito4t/embulk-input-filesplit/blob/master/src/main/java/org/embulk/input/filesplit/PartialFileInputStream.java
-class HdfsPartialFileInputStream extends InputStream
+public class HdfsPartialFileInputStream extends InputStream
 {
     private final PushbackInputStream original;
     private long start;

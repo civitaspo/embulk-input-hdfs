@@ -13,7 +13,7 @@ import java.util.List;
 /**
  * Created by takahiro.nakayama on 8/20/15.
  */
-class HdfsFilePartitionManager
+public class HdfsFilePartitionManager
 {
     private FileSystem fs;
     private List<Path> fileList;
