@@ -83,7 +83,7 @@ public class HdfsFileInputPlugin implements FileInputPlugin
         // log the detail of partial files.
         for (HdfsPartialFile partialFile : task.getFiles()) {
             logger.info("target file: {}, start: {}, end: {}",
-                    partialFile.getPath().toString(), partialFile.getStart(), partialFile.getEnd());
+                    partialFile.getPath(), partialFile.getStart(), partialFile.getEnd());
         }
 
         // number of processors is same with number of targets
@@ -153,7 +153,7 @@ public class HdfsFileInputPlugin implements FileInputPlugin
     private static HdfsPartialFileInputStream openInputStream(PluginTask task, HdfsPartialFile partialFile) throws IOException
     {
         FileSystem fs = getFs(task);
-        InputStream original = fs.open(partialFile.getPath());
+        InputStream original = fs.open(new Path(partialFile.getPath()));
         return new HdfsPartialFileInputStream(original, partialFile.getStart(), partialFile.getEnd());
     }
 

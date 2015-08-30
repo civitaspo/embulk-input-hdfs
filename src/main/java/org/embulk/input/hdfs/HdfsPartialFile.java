@@ -8,18 +8,21 @@ import org.apache.hadoop.fs.Path;
 // ref. https://github.com/hito4t/embulk-input-filesplit/blob/master/src/main/java/org/embulk/input/filesplit/PartialFile.java
 public class HdfsPartialFile
 {
-    private Path path;
+    private String path;
     private long start;
     private long end;
 
-    public HdfsPartialFile(Path path, long start, long end)
+    public HdfsPartialFile(String path, long start, long end)
     {
         this.path = path;
         this.start = start;
         this.end = end;
     }
 
-    public Path getPath()
+    // see: http://stackoverflow.com/questions/7625783/jsonmappingexception-no-suitable-constructor-found-for-type-simple-type-class
+    public HdfsPartialFile() { }
+
+    public String getPath()
     {
         return path;
     }

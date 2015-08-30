@@ -31,7 +31,7 @@ public class HdfsFilePartitioner
             long start = size * i / partitionNum;
             long end = size * (i + 1) / partitionNum;
             if (start < end) {
-                hdfsPartialFiles.add(new HdfsPartialFile(path, start, end));
+                hdfsPartialFiles.add(new HdfsPartialFile(path.toString(), start, end));
             }
         }
         return hdfsPartialFiles;
