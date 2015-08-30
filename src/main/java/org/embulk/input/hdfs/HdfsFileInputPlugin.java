@@ -8,6 +8,7 @@ import java.util.Map;
 
 import com.google.common.base.Optional;
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.Lists;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.FileSystem;
@@ -20,14 +21,13 @@ import org.embulk.config.ConfigDiff;
 import org.embulk.config.ConfigSource;
 import org.embulk.config.Task;
 import org.embulk.config.TaskSource;
-import org.embulk.spi.Exec;
-import org.embulk.spi.FileInputPlugin;
-import org.embulk.spi.BufferAllocator;
-import org.embulk.spi.TransactionalFileInput;
+import org.embulk.spi.*;
 import org.embulk.spi.util.InputStreamFileInput;
 import org.embulk.spi.util.InputStreamTransactionalFileInput;
 import org.jruby.embed.ScriptingContainer;
 import org.slf4j.Logger;
+
+import javax.annotation.Nullable;
 
 public class HdfsFileInputPlugin implements FileInputPlugin
 {
@@ -50,8 +50,12 @@ public class HdfsFileInputPlugin implements FileInputPlugin
         @ConfigDefault("0")
         public int getRewindSeconds();
 
-        public List<String> getFiles();
-        public void setFiles(List<String> hdfsFiles);
+        @Config("partition_size")
+        @ConfigDefault("-1")
+        public int getPartitionSize();
+
+        public List<HdfsPartialFile> getFiles();
+        public void setFiles(List<HdfsPartialFile> hdfsFiles);
 
         @ConfigInject
         public BufferAllocator getBufferAllocator();
@@ -65,17 +69,26 @@ public class HdfsFileInputPlugin implements FileInputPlugin
         // listing Files
         String pathString = strftime(task.getInputPath(), task.getRewindSeconds());
         try {
-            // TODO: Create PartitionedFileList for using MultiThread
-            task.setFiles(buildFileList(getFs(task), pathString));
+            List<String> originalFileList = buildFileList(getFs(task), pathString);
+            HdfsFilePartitionManager partitionManager = new HdfsFilePartitionManager(
+                    getFs(task), originalFileList, task.getPartitionSize());
+            task.setFiles(partitionManager.getHdfsPartialFiles());
+            logger.info("Loading target files: {}", originalFileList);
         }
         catch (IOException e) {
             logger.error(e.getMessage());
             throw new RuntimeException(e);
         }
-        logger.info("Loading target files: {}", task.getFiles());
+
+        // log the detail of partial files.
+        for (HdfsPartialFile partialFile : task.getFiles()) {
+            logger.info("target file: {}, start: {}, end: {}",
+                    partialFile.getPath().toString(), partialFile.getStart(), partialFile.getEnd());
+        }
 
         // number of processors is same with number of targets
         int taskCount = task.getFiles().size();
+        logger.info("task size: {}", taskCount);
 
         return resume(task.dump(), taskCount, control);
     }
@@ -89,7 +102,7 @@ public class HdfsFileInputPlugin implements FileInputPlugin
 
         ConfigDiff configDiff = Exec.newConfigDiff();
 
-        // usually, yo uset last_path
+        // usually, yo use last_path
         //if (task.getFiles().isEmpty()) {
         //    if (task.getLastPath().isPresent()) {
         //        configDiff.set("last_path", task.getLastPath().get());
@@ -137,10 +150,11 @@ public class HdfsFileInputPlugin implements FileInputPlugin
         };
     }
 
-    // TODO: use PartitionedFileInputStream
-    private static InputStream openInputStream(PluginTask task, String path) throws IOException
+    private static HdfsPartialFileInputStream openInputStream(PluginTask task, HdfsPartialFile partialFile) throws IOException
     {
-        return getFs(task).open(new Path(path));
+        FileSystem fs = getFs(task);
+        InputStream original = fs.open(partialFile.getPath());
+        return new HdfsPartialFileInputStream(original, partialFile.getStart(), partialFile.getEnd());
     }
 
     private static FileSystem getFs(final PluginTask task) throws IOException {
