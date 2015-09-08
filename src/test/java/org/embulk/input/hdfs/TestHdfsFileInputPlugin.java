@@ -1,4 +1,4 @@
-package org.embulk.input;
+package org.embulk.input.hdfs;
 
 public class TestHdfsFileInputPlugin
 {

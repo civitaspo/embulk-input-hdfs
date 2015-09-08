@@ -14,6 +14,7 @@ Read files on Hdfs.
 - **config** overwrites configuration parameters (hash, default: `{}`)
 - **input_path** file path on Hdfs. you can use glob and Date format like `%Y%m%d/%s`.
 - **rewind_seconds** When you use Date format in input_path property, the format is executed by using the time which is Now minus this property.
+- **partition** when this is true, partition input files and increase task count. (default: `true`)
 
 ## Example
 
@@ -24,12 +25,13 @@ in:
     - /opt/analytics/etc/hadoop/conf/core-site.xml
     - /opt/analytics/etc/hadoop/conf/hdfs-site.xml
   config:
-    fs.defaultFS: 'hdfs://hdp-nn1:8020'
+    fs.defaultFS: 'hdfs://hadoop-nn1:8020'
     dfs.replication: 1
     fs.hdfs.impl: 'org.apache.hadoop.hdfs.DistributedFileSystem'
     fs.file.impl: 'org.apache.hadoop.fs.LocalFileSystem'
   input_path: /user/embulk/test/%Y-%m-%d/*
   rewind_seconds: 86400
+  partition: true
   decoders:
     - {type: gzip}
   parser:
@@ -49,6 +51,15 @@ in:
     - {name: c2, type: string}
     - {name: c3, type: long}
 ```
+
+## Note
+- the feature of the partition supports only 3 line terminators.
+  - `\n`
+  - `\r`
+  - `\r\n`
+
+## The Reference Implementation
+- [hito4t/embulk-input-filesplit](https://github.com/hito4t/embulk-input-filesplit)
 
 ## Build
 
