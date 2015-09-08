@@ -55,6 +55,11 @@ public class HdfsFileInputPlugin implements FileInputPlugin
         @ConfigDefault("true")
         public boolean getPartition();
 
+        // this parameter is experimental.
+        @Config("partition_level")
+        @ConfigDefault("3")
+        public int getPartitonLevel();
+
         public List<HdfsPartialFile> getFiles();
         public void setFiles(List<HdfsPartialFile> hdfsFiles);
 
@@ -230,7 +235,7 @@ public class HdfsFileInputPlugin implements FileInputPlugin
         }
 
         // TODO: optimum allocation of resources
-        int partitionCountParameter = 3;
+        int partitionCountParameter = task.getPartitonLevel();
         int partitionSizeByOneTask = totalFileLength / (Runtime.getRuntime().availableProcessors() * partitionCountParameter);
 
         List<HdfsPartialFile> hdfsPartialFiles = new ArrayList<>();
