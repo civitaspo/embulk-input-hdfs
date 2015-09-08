@@ -6,6 +6,7 @@ import java.util.List;
 import java.util.ArrayList;
 import java.util.Map;
 
+import com.google.common.base.Function;
 import com.google.common.base.Optional;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Lists;
@@ -50,9 +51,9 @@ public class HdfsFileInputPlugin implements FileInputPlugin
         @ConfigDefault("0")
         public int getRewindSeconds();
 
-        @Config("partition_size")
-        @ConfigDefault("-1")
-        public int getPartitionSize();
+        @Config("partition")
+        @ConfigDefault("true")
+        public boolean getPartition();
 
         public List<HdfsPartialFile> getFiles();
         public void setFiles(List<HdfsPartialFile> hdfsFiles);
@@ -70,9 +71,7 @@ public class HdfsFileInputPlugin implements FileInputPlugin
         String pathString = strftime(task.getInputPath(), task.getRewindSeconds());
         try {
             List<String> originalFileList = buildFileList(getFs(task), pathString);
-            HdfsFilePartitionManager partitionManager = new HdfsFilePartitionManager(
-                    getFs(task), originalFileList, task.getPartitionSize());
-            task.setFiles(partitionManager.getHdfsPartialFiles());
+            task.setFiles(allocateHdfsFilesToTasks(task, getFs(task), originalFileList));
             logger.info("Loading target files: {}", originalFileList);
         }
         catch (IOException e) {
@@ -207,13 +206,52 @@ public class HdfsFileInputPlugin implements FileInputPlugin
         return fileList;
     }
 
-//    private List<Path> distinctFileList(List<Path> fileList)
-//    {
-//        Set<Path> set = new HashSet<Path>();
-//        set.addAll(fileList);
-//        List<Path> uniqueFileList = new ArrayList<Path>();
-//        uniqueFileList.addAll(set);
-//        return uniqueFileList;
-//    }
+    private List<HdfsPartialFile> allocateHdfsFilesToTasks(final PluginTask task, final FileSystem fs, final List<String> fileList)
+            throws IOException
+    {
+        List<Path> pathList = Lists.transform(fileList, new Function<String, Path>()
+        {
+            @Nullable
+            @Override
+            public Path apply(@Nullable String input)
+            {
+                return new Path(input);
+            }
+        });
 
+        int totalFileLength = 0;
+        for (Path path : pathList) {
+            totalFileLength += fs.getFileStatus(path).getLen();
+        }
+
+        // TODO: optimum allocation of resources
+        int partitionCountParameter = 3;
+        int partitionSizeByOneTask = totalFileLength / (Runtime.getRuntime().availableProcessors() * partitionCountParameter);
+
+        List<HdfsPartialFile> hdfsPartialFiles = new ArrayList<>();
+        for (Path path : pathList) {
+            int partitionCount;
+
+            if (path.toString().endsWith(".gz") || path.toString().endsWith(".bz2") || path.toString().endsWith(".lzo")) {
+                partitionCount = 1;
+            }
+            else if (!task.getPartition()) {
+                partitionCount = 1;
+            }
+            else {
+                int fileLength = (int) fs.getFileStatus(path).getLen();
+                partitionCount = fileLength / partitionSizeByOneTask;
+                int remainder = fileLength % partitionSizeByOneTask;
+
+                if (remainder > 0) {
+                    partitionCount++;
+                }
+            }
+
+            HdfsFilePartitioner partitioner = new HdfsFilePartitioner(fs, path, partitionCount);
+            hdfsPartialFiles.addAll(partitioner.getHdfsPartialFiles());
+        }
+
+        return hdfsPartialFiles;
+    }
 }
