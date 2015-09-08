@@ -14,22 +14,22 @@ public class HdfsFilePartitioner
 {
     private FileSystem fs;
     private Path path;
-    private int partitionNum;
+    private int partitionCount;
 
-    public HdfsFilePartitioner(FileSystem fs, Path path, int partitionNum)
+    public HdfsFilePartitioner(FileSystem fs, Path path, int partitionCount)
     {
         this.fs = fs;
         this.path = path;
-        this.partitionNum = partitionNum;
+        this.partitionCount = partitionCount;
     }
 
     public List<HdfsPartialFile> getHdfsPartialFiles() throws IOException
     {
         List<HdfsPartialFile> hdfsPartialFiles = new ArrayList<>();
         long size = fs.getFileStatus(path).getLen();
-        for (int i = 0; i < partitionNum; i++) {
-            long start = size * i / partitionNum;
-            long end = size * (i + 1) / partitionNum;
+        for (int i = 0; i < partitionCount; i++) {
+            long start = size * i / partitionCount;
+            long end = size * (i + 1) / partitionCount;
             if (start < end) {
                 hdfsPartialFiles.add(new HdfsPartialFile(path.toString(), start, end));
             }

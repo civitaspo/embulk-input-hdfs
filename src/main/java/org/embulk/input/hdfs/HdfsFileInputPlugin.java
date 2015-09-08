@@ -149,14 +149,17 @@ public class HdfsFileInputPlugin implements FileInputPlugin
         };
     }
 
-    private static HdfsPartialFileInputStream openInputStream(PluginTask task, HdfsPartialFile partialFile) throws IOException
+    private static HdfsPartialFileInputStream openInputStream(PluginTask task, HdfsPartialFile partialFile)
+            throws IOException
     {
         FileSystem fs = getFs(task);
         InputStream original = fs.open(new Path(partialFile.getPath()));
         return new HdfsPartialFileInputStream(original, partialFile.getStart(), partialFile.getEnd());
     }
 
-    private static FileSystem getFs(final PluginTask task) throws IOException {
+    private static FileSystem getFs(final PluginTask task)
+            throws IOException
+    {
         Configuration configuration = new Configuration();
 
         for (Object configFile : task.getConfigFiles()) {
@@ -179,7 +182,8 @@ public class HdfsFileInputPlugin implements FileInputPlugin
         return resolved.toString();
     }
 
-    private List<String> buildFileList(final FileSystem fs, final String pathString) throws IOException
+    private List<String> buildFileList(final FileSystem fs, final String pathString)
+            throws IOException
     {
         List<String> fileList = new ArrayList<>();
         for (FileStatus entry : fs.globStatus(new Path(pathString))) {
@@ -192,7 +196,8 @@ public class HdfsFileInputPlugin implements FileInputPlugin
         return fileList;
     }
 
-    private List<String> lsr(final FileSystem fs, FileStatus status) throws IOException
+    private List<String> lsr(final FileSystem fs, FileStatus status)
+            throws IOException
     {
         List<String> fileList = new ArrayList<>();
         if (status.isDirectory()) {
