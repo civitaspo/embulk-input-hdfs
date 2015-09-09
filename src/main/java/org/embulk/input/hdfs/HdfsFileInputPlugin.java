@@ -55,10 +55,9 @@ public class HdfsFileInputPlugin implements FileInputPlugin
         @ConfigDefault("true")
         public boolean getPartition();
 
-        // this parameter is experimental.
-        @Config("partition_level")
-        @ConfigDefault("3")
-        public int getPartitonLevel();
+        @Config("num_partitions") // this parameter is the approximate value.
+        @ConfigDefault("-1")      // Default: Runtime.getRuntime().availableProcessors()
+        public int getApproximateNumPartitions();
 
         public List<HdfsPartialFile> getFiles();
         public void setFiles(List<HdfsPartialFile> hdfsFiles);
@@ -235,30 +234,30 @@ public class HdfsFileInputPlugin implements FileInputPlugin
         }
 
         // TODO: optimum allocation of resources
-        int partitionCountParameter = task.getPartitonLevel();
-        int partitionSizeByOneTask = totalFileLength / (Runtime.getRuntime().availableProcessors() * partitionCountParameter);
+        int approximateNumPartitions =
+                (task.getApproximateNumPartitions() <= 0) ? Runtime.getRuntime().availableProcessors() : task.getApproximateNumPartitions();
+        int partitionSizeByOneTask = totalFileLength / approximateNumPartitions;
 
         List<HdfsPartialFile> hdfsPartialFiles = new ArrayList<>();
         for (Path path : pathList) {
-            int partitionCount;
+            int fileLength = (int) fs.getFileStatus(path).getLen(); // declare `fileLength` here because this is used below.
+            if (fileLength <= 0) {
+                logger.info("Skip the 0 byte target file: {}", path);
+                continue;
+            }
 
+            int numPartitions;
             if (path.toString().endsWith(".gz") || path.toString().endsWith(".bz2") || path.toString().endsWith(".lzo")) {
-                partitionCount = 1;
+                numPartitions = 1;
             }
             else if (!task.getPartition()) {
-                partitionCount = 1;
+                numPartitions = 1;
             }
             else {
-                int fileLength = (int) fs.getFileStatus(path).getLen();
-                partitionCount = fileLength / partitionSizeByOneTask;
-                int remainder = fileLength % partitionSizeByOneTask;
-
-                if (remainder > 0) {
-                    partitionCount++;
-                }
+                numPartitions = ((fileLength - 1) / partitionSizeByOneTask) + 1;
             }
 
-            HdfsFilePartitioner partitioner = new HdfsFilePartitioner(fs, path, partitionCount);
+            HdfsFilePartitioner partitioner = new HdfsFilePartitioner(fs, path, numPartitions);
             hdfsPartialFiles.addAll(partitioner.getHdfsPartialFiles());
         }
 
