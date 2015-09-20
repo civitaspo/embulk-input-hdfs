@@ -117,11 +117,12 @@ public class HdfsPartialFileInputStream extends InputStream
     {
         if (current >= start) {
             return;
-
         }
+
         if (start == 0) {
             current = 0;
-        } else {
+        }
+        else {
             current = original.skip(--start);
             if (current != start) {
                 throw new IOException("Cannot skip.");
