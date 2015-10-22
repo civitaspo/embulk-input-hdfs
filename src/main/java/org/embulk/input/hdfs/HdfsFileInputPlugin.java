@@ -203,7 +203,7 @@ public class HdfsFileInputPlugin implements FileInputPlugin
             }
         }
         else {
-            throw new PathNotFoundException("No such file or directory: " + rootPath);
+            throw new PathNotFoundException(rootPath.toString());
         }
         return fileList;
     }
