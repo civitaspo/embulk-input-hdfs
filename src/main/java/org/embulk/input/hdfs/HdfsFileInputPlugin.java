@@ -44,8 +44,8 @@ public class HdfsFileInputPlugin implements FileInputPlugin
         @ConfigDefault("{}")
         public Map<String, String> getConfig();
 
-        @Config("input_path")
-        public String getInputPath();
+        @Config("path")
+        public String getPath();
 
         @Config("rewind_seconds")
         @ConfigDefault("0")
@@ -72,7 +72,7 @@ public class HdfsFileInputPlugin implements FileInputPlugin
         PluginTask task = config.loadConfig(PluginTask.class);
 
         // listing Files
-        String pathString = strftime(task.getInputPath(), task.getRewindSeconds());
+        String pathString = strftime(task.getPath(), task.getRewindSeconds());
         try {
             List<String> originalFileList = buildFileList(getFs(task), pathString);
             task.setFiles(allocateHdfsFilesToTasks(task, getFs(task), originalFileList));
