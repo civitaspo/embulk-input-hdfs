@@ -1,34 +1,34 @@
 package org.embulk.input.hdfs;
 
-import java.io.IOException;
-import java.io.InputStream;
-import java.util.List;
-import java.util.ArrayList;
-import java.util.Map;
-
 import com.google.common.base.Function;
-import com.google.common.base.Optional;
-import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Lists;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
-import org.embulk.config.TaskReport;
+import org.apache.hadoop.fs.PathNotFoundException;
 import org.embulk.config.Config;
 import org.embulk.config.ConfigDefault;
-import org.embulk.config.ConfigInject;
 import org.embulk.config.ConfigDiff;
+import org.embulk.config.ConfigInject;
 import org.embulk.config.ConfigSource;
 import org.embulk.config.Task;
+import org.embulk.config.TaskReport;
 import org.embulk.config.TaskSource;
-import org.embulk.spi.*;
-import org.embulk.spi.util.InputStreamFileInput;
+import org.embulk.spi.BufferAllocator;
+import org.embulk.spi.Exec;
+import org.embulk.spi.FileInputPlugin;
+import org.embulk.spi.TransactionalFileInput;
 import org.embulk.spi.util.InputStreamTransactionalFileInput;
 import org.jruby.embed.ScriptingContainer;
 import org.slf4j.Logger;
 
 import javax.annotation.Nullable;
+import java.io.IOException;
+import java.io.InputStream;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Map;
 
 public class HdfsFileInputPlugin implements FileInputPlugin
 {
@@ -44,8 +44,8 @@ public class HdfsFileInputPlugin implements FileInputPlugin
         @ConfigDefault("{}")
         public Map<String, String> getConfig();
 
-        @Config("input_path")
-        public String getInputPath();
+        @Config("path")
+        public String getPath();
 
         @Config("rewind_seconds")
         @ConfigDefault("0")
@@ -72,7 +72,7 @@ public class HdfsFileInputPlugin implements FileInputPlugin
         PluginTask task = config.loadConfig(PluginTask.class);
 
         // listing Files
-        String pathString = strftime(task.getInputPath(), task.getRewindSeconds());
+        String pathString = strftime(task.getPath(), task.getRewindSeconds());
         try {
             List<String> originalFileList = buildFileList(getFs(task), pathString);
             task.setFiles(allocateHdfsFilesToTasks(task, getFs(task), originalFileList));
@@ -190,12 +190,20 @@ public class HdfsFileInputPlugin implements FileInputPlugin
             throws IOException
     {
         List<String> fileList = new ArrayList<>();
-        for (FileStatus entry : fs.globStatus(new Path(pathString))) {
-            if (entry.isDirectory()) {
-                fileList.addAll(lsr(fs, entry));
-            } else {
-                fileList.add(entry.getPath().toString());
+        Path rootPath = new Path(pathString);
+
+        if (fs.exists(rootPath)) {
+            for (FileStatus entry : fs.globStatus(rootPath)) {
+                if (entry.isDirectory()) {
+                    fileList.addAll(lsr(fs, entry));
+                }
+                else {
+                    fileList.add(entry.getPath().toString());
+                }
             }
+        }
+        else {
+            throw new PathNotFoundException("No such file or directory: " + rootPath);
         }
         return fileList;
     }
