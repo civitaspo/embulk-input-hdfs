@@ -13,6 +13,7 @@ import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.fs.PathNotFoundException;
 import org.embulk.config.TaskReport;
 import org.embulk.config.Config;
 import org.embulk.config.ConfigDefault;
@@ -202,7 +203,7 @@ public class HdfsFileInputPlugin implements FileInputPlugin
         }
         else {
             logger.error("No such file or directory: {}", rootPath);
-            throw new FileNotFoundException("No such file or directory: " + rootPath);
+            throw new PathNotFoundException("No such file or directory: " + rootPath);
         }
         return fileList;
     }
