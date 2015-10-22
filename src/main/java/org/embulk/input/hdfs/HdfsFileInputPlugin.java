@@ -1,5 +1,6 @@
 package org.embulk.input.hdfs;
 
+import java.io.FileNotFoundException;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.List;
@@ -7,8 +8,6 @@ import java.util.ArrayList;
 import java.util.Map;
 
 import com.google.common.base.Function;
-import com.google.common.base.Optional;
-import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Lists;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileStatus;
@@ -23,7 +22,6 @@ import org.embulk.config.ConfigSource;
 import org.embulk.config.Task;
 import org.embulk.config.TaskSource;
 import org.embulk.spi.*;
-import org.embulk.spi.util.InputStreamFileInput;
 import org.embulk.spi.util.InputStreamTransactionalFileInput;
 import org.jruby.embed.ScriptingContainer;
 import org.slf4j.Logger;
@@ -190,12 +188,21 @@ public class HdfsFileInputPlugin implements FileInputPlugin
             throws IOException
     {
         List<String> fileList = new ArrayList<>();
-        for (FileStatus entry : fs.globStatus(new Path(pathString))) {
-            if (entry.isDirectory()) {
-                fileList.addAll(lsr(fs, entry));
-            } else {
-                fileList.add(entry.getPath().toString());
+        Path rootPath = new Path(pathString);
+
+        if (fs.exists(rootPath)) {
+            for (FileStatus entry : fs.globStatus(rootPath)) {
+                if (entry.isDirectory()) {
+                    fileList.addAll(lsr(fs, entry));
+                }
+                else {
+                    fileList.add(entry.getPath().toString());
+                }
             }
+        }
+        else {
+            logger.error("No such file or directory: {}", rootPath);
+            throw new FileNotFoundException("No such file or directory: " + rootPath);
         }
         return fileList;
     }
