@@ -75,6 +75,11 @@ public class HdfsFileInputPlugin implements FileInputPlugin
         String pathString = strftime(task.getPath(), task.getRewindSeconds());
         try {
             List<String> originalFileList = buildFileList(getFs(task), pathString);
+
+            if (originalFileList.isEmpty()) {
+                throw new PathNotFoundException(pathString);
+            }
+
             task.setFiles(allocateHdfsFilesToTasks(task, getFs(task), originalFileList));
             logger.info("Loading target files: {}", originalFileList);
         }
@@ -192,19 +197,15 @@ public class HdfsFileInputPlugin implements FileInputPlugin
         List<String> fileList = new ArrayList<>();
         Path rootPath = new Path(pathString);
 
-        if (fs.exists(rootPath)) {
-            for (FileStatus entry : fs.globStatus(rootPath)) {
-                if (entry.isDirectory()) {
-                    fileList.addAll(lsr(fs, entry));
-                }
-                else {
-                    fileList.add(entry.getPath().toString());
-                }
+        for (FileStatus entry : fs.globStatus(rootPath)) {
+            if (entry.isDirectory()) {
+                fileList.addAll(lsr(fs, entry));
+            }
+            else {
+                fileList.add(entry.getPath().toString());
             }
         }
-        else {
-            throw new PathNotFoundException(rootPath.toString());
-        }
+
         return fileList;
     }
 
