@@ -197,7 +197,15 @@ public class HdfsFileInputPlugin implements FileInputPlugin
         List<String> fileList = new ArrayList<>();
         Path rootPath = new Path(pathString);
 
-        for (FileStatus entry : fs.globStatus(rootPath)) {
+        final FileStatus[] entries = fs.globStatus(rootPath);
+        // `globStatus` does not throw PathNotFoundException.
+        // return null instead.
+        // see: https://github.com/apache/hadoop/blob/branch-2.7.0/hadoop-common-project/hadoop-common/src/main/java/org/apache/hadoop/fs/Globber.java#L286
+        if (entries == null) {
+            return fileList;
+        }
+
+        for (FileStatus entry : entries) {
             if (entry.isDirectory()) {
                 fileList.addAll(lsr(fs, entry));
             }
