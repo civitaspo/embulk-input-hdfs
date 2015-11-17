@@ -90,7 +90,7 @@ public class HdfsFileInputPlugin implements FileInputPlugin
 
         // log the detail of partial files.
         for (HdfsPartialFile partialFile : task.getFiles()) {
-            logger.info("embulk-input-hdfs: target file: {}, start: {}, end: {}",
+            logger.debug("embulk-input-hdfs: target file: {}, start: {}, end: {}",
                     partialFile.getPath(), partialFile.getStart(), partialFile.getEnd());
         }
 
