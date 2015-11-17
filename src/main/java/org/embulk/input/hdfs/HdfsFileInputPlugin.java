@@ -81,7 +81,7 @@ public class HdfsFileInputPlugin implements FileInputPlugin
             }
 
             task.setFiles(allocateHdfsFilesToTasks(task, getFs(task), originalFileList));
-            logger.info("Loading target files: {}", originalFileList);
+            logger.info("embulk-input-hdfs: Loading target files: {}", originalFileList);
         }
         catch (IOException e) {
             logger.error(e.getMessage());
@@ -90,13 +90,13 @@ public class HdfsFileInputPlugin implements FileInputPlugin
 
         // log the detail of partial files.
         for (HdfsPartialFile partialFile : task.getFiles()) {
-            logger.info("target file: {}, start: {}, end: {}",
+            logger.debug("embulk-input-hdfs: target file: {}, start: {}, end: {}",
                     partialFile.getPath(), partialFile.getStart(), partialFile.getEnd());
         }
 
         // number of processors is same with number of targets
         int taskCount = task.getFiles().size();
-        logger.info("task size: {}", taskCount);
+        logger.info("embulk-input-hdfs: task size: {}", taskCount);
 
         return resume(task.dump(), taskCount, control);
     }
@@ -259,7 +259,7 @@ public class HdfsFileInputPlugin implements FileInputPlugin
         for (Path path : pathList) {
             int fileLength = (int) fs.getFileStatus(path).getLen(); // declare `fileLength` here because this is used below.
             if (fileLength <= 0) {
-                logger.info("Skip the 0 byte target file: {}", path);
+                logger.info("embulk-input-hdfs: Skip the 0 byte target file: {}", path);
                 continue;
             }
 
