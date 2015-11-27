@@ -24,8 +24,10 @@ import org.jruby.embed.ScriptingContainer;
 import org.slf4j.Logger;
 
 import javax.annotation.Nullable;
+import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
+import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -171,10 +173,9 @@ public class HdfsFileInputPlugin implements FileInputPlugin
     {
         Configuration configuration = new Configuration();
 
-        for (Object configFile : task.getConfigFiles()) {
-            configuration.addResource(configFile.toString());
+        for (String configFile : task.getConfigFiles()) {
+            configuration.addResource(new File(configFile).toURI().toURL());
         }
-        configuration.reloadConfiguration();
 
         for (Map.Entry<String, String> entry: task.getConfig().entrySet()) {
             configuration.set(entry.getKey(), entry.getValue());
