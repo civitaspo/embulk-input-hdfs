@@ -27,7 +27,6 @@ import javax.annotation.Nullable;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
-import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -174,7 +173,8 @@ public class HdfsFileInputPlugin implements FileInputPlugin
         Configuration configuration = new Configuration();
 
         for (String configFile : task.getConfigFiles()) {
-            configuration.addResource(new File(configFile).toURI().toURL());
+            File file = new File(configFile);
+            configuration.addResource(file.toURI().toURL());
         }
 
         for (Map.Entry<String, String> entry: task.getConfig().entrySet()) {
