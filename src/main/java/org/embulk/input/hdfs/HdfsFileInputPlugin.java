@@ -58,7 +58,7 @@ public class HdfsFileInputPlugin implements FileInputPlugin
 
         @Config("num_partitions") // this parameter is the approximate value.
         @ConfigDefault("-1")      // Default: Runtime.getRuntime().availableProcessors()
-        public int getApproximateNumPartitions();
+        public long getApproximateNumPartitions();
 
         public List<HdfsPartialFile> getFiles();
         public void setFiles(List<HdfsPartialFile> hdfsFiles);
@@ -246,25 +246,25 @@ public class HdfsFileInputPlugin implements FileInputPlugin
             }
         });
 
-        int totalFileLength = 0;
+        long totalFileLength = 0;
         for (Path path : pathList) {
             totalFileLength += fs.getFileStatus(path).getLen();
         }
 
         // TODO: optimum allocation of resources
-        int approximateNumPartitions =
+        long approximateNumPartitions =
                 (task.getApproximateNumPartitions() <= 0) ? Runtime.getRuntime().availableProcessors() : task.getApproximateNumPartitions();
-        int partitionSizeByOneTask = totalFileLength / approximateNumPartitions;
+        long partitionSizeByOneTask = totalFileLength / approximateNumPartitions;
 
         List<HdfsPartialFile> hdfsPartialFiles = new ArrayList<>();
         for (Path path : pathList) {
-            int fileLength = (int) fs.getFileStatus(path).getLen(); // declare `fileLength` here because this is used below.
+            long fileLength = fs.getFileStatus(path).getLen(); // declare `fileLength` here because this is used below.
             if (fileLength <= 0) {
                 logger.info("embulk-input-hdfs: Skip the 0 byte target file: {}", path);
                 continue;
             }
 
-            int numPartitions;
+            long numPartitions;
             if (path.toString().endsWith(".gz") || path.toString().endsWith(".bz2") || path.toString().endsWith(".lzo")) {
                 numPartitions = 1;
             }

@@ -14,9 +14,9 @@ public class HdfsFilePartitioner
 {
     private FileSystem fs;
     private Path path;
-    private int numPartitions;
+    private long numPartitions;
 
-    public HdfsFilePartitioner(FileSystem fs, Path path, int numPartitions)
+    public HdfsFilePartitioner(FileSystem fs, Path path, long numPartitions)
     {
         this.fs = fs;
         this.path = path;
