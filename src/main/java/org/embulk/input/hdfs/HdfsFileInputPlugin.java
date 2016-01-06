@@ -66,8 +66,8 @@ public class HdfsFileInputPlugin implements FileInputPlugin
         @ConfigDefault("-1")      // Default: Runtime.getRuntime().availableProcessors()
         public long getApproximateNumPartitions();
 
-        @Config("skip_header_lines")
-        @ConfigDefault("0")
+        @Config("skip_header_lines") // Skip this number of lines first. Set 1 if the file has header line.
+        @ConfigDefault("0")          // The reason why the parameter is configured is that this plugin splits files.
         public int getSkipHeaderLines();
 
         public List<HdfsPartialFile> getFiles();
@@ -152,7 +152,7 @@ public class HdfsFileInputPlugin implements FileInputPlugin
         try {
             input = openInputStream(task, file);
             if (file.getStart() > 0 && task.getSkipHeaderLines() > 0) {
-                input = new SequenceInputStream(openWithHeaders(task, file), input);
+                input = new SequenceInputStream(openHeaders(task, file), input);
             }
         }
         catch (IOException e) {
@@ -173,7 +173,7 @@ public class HdfsFileInputPlugin implements FileInputPlugin
         };
     }
 
-    private InputStream openWithHeaders(PluginTask task, HdfsPartialFile partialFile) throws IOException
+    private InputStream openHeaders(PluginTask task, HdfsPartialFile partialFile) throws IOException
     {
         FileSystem fs = getFs(task);
         ByteArrayOutputStream header = new ByteArrayOutputStream();
