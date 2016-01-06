@@ -26,6 +26,7 @@ dependencies {
     compile 'org.apache.hadoop:hadoop-client:2.6.0'
     testCompile "junit:junit:4.+"
     testCompile "org.embulk:embulk-core:0.7.+:tests"
+    testCompile "org.embulk:embulk-standards:0.7.+"
 }
 
 jacocoTestReport {
