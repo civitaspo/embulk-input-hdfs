@@ -1,4 +1,6 @@
 # Hdfs file input plugin for Embulk
+[![Build Status](https://travis-ci.org/civitaspo/embulk-input-hdfs.svg)](https://travis-ci.org/civitaspo/embulk-input-hdfs)
+[![Coverage Status](https://coveralls.io/repos/civitaspo/embulk-input-hdfs/badge.svg?branch=master&service=github)](https://coveralls.io/github/civitaspo/embulk-input-hdfs?branch=master)
 
 Read files on Hdfs.
 
