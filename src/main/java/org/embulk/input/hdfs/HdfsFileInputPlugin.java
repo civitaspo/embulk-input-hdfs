@@ -186,7 +186,7 @@ public class HdfsFileInputPlugin implements FileInputPlugin
         Iterator<Map.Entry<String, String>> entryIterator = configuration.iterator();
         while (entryIterator.hasNext()) {
             Map.Entry<String, String> entry = entryIterator.next();
-            logger.debug("{}: {}", entry.getKey(), entry.getValue());
+            logger.trace("{}: {}", entry.getKey(), entry.getValue());
         }
         logger.debug("Resource Files: {}", configuration);
 
