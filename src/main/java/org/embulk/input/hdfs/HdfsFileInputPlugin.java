@@ -245,6 +245,7 @@ public class HdfsFileInputPlugin implements FileInputPlugin
     private List<HdfsPartialFile> allocateHdfsFilesToTasks(final PluginTask task, final FileSystem fs, final List<String> fileList)
             throws IOException
     {
+
         List<Path> pathList = Lists.transform(fileList, new Function<String, Path>()
         {
             @Nullable
@@ -264,6 +265,9 @@ public class HdfsFileInputPlugin implements FileInputPlugin
         long approximateNumPartitions =
                 (task.getApproximateNumPartitions() <= 0) ? Runtime.getRuntime().availableProcessors() : task.getApproximateNumPartitions();
         long partitionSizeByOneTask = totalFileLength / approximateNumPartitions;
+        if (partitionSizeByOneTask <= 0) {
+            partitionSizeByOneTask = 1;
+        }
 
         List<HdfsPartialFile> hdfsPartialFiles = new ArrayList<>();
         for (Path path : pathList) {
