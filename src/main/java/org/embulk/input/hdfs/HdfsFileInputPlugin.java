@@ -28,6 +28,7 @@ import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.ArrayList;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 
@@ -81,8 +82,8 @@ public class HdfsFileInputPlugin implements FileInputPlugin
                 throw new PathNotFoundException(pathString);
             }
 
+            logger.debug("embulk-input-hdfs: Loading target files: {}", originalFileList);
             task.setFiles(allocateHdfsFilesToTasks(task, getFs(task), originalFileList));
-            logger.info("embulk-input-hdfs: Loading target files: {}", originalFileList);
         }
         catch (IOException e) {
             logger.error(e.getMessage());
@@ -180,6 +181,14 @@ public class HdfsFileInputPlugin implements FileInputPlugin
         for (Map.Entry<String, String> entry: task.getConfig().entrySet()) {
             configuration.set(entry.getKey(), entry.getValue());
         }
+
+        // For debug
+        Iterator<Map.Entry<String, String>> entryIterator = configuration.iterator();
+        while (entryIterator.hasNext()) {
+            Map.Entry<String, String> entry = entryIterator.next();
+            logger.debug("{}: {}", entry.getKey(), entry.getValue());
+        }
+        logger.debug("Resource Files: {}", configuration);
 
         return FileSystem.get(configuration);
     }
