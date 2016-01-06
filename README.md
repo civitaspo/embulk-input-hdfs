@@ -25,8 +25,8 @@ Read files on Hdfs.
 in:
   type: hdfs
   config_files:
-    - /opt/analytics/etc/hadoop/conf/core-site.xml
-    - /opt/analytics/etc/hadoop/conf/hdfs-site.xml
+    - /etc/hadoop/conf/core-site.xml
+    - /etc/hadoop/conf/hdfs-site.xml
   config:
     fs.defaultFS: 'hdfs://hadoop-nn1:8020'
     dfs.replication: 1
