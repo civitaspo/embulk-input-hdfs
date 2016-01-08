@@ -1,7 +1,5 @@
 package org.embulk.input.hdfs;
 
-import org.apache.hadoop.fs.Path;
-
 /**
  * Created by takahiro.nakayama on 8/20/15.
  */
@@ -36,5 +34,4 @@ public class HdfsPartialFile
     {
         return end;
     }
-
 }

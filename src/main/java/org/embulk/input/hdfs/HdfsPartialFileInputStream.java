@@ -6,7 +6,8 @@ import java.io.InputStream;
 import java.io.PushbackInputStream;
 
 // ref. https://github.com/hito4t/embulk-input-filesplit/blob/master/src/main/java/org/embulk/input/filesplit/PartialFileInputStream.java
-public class HdfsPartialFileInputStream extends InputStream
+public class HdfsPartialFileInputStream
+        extends InputStream
 {
     private final PushbackInputStream original;
     private long start;
@@ -23,13 +24,15 @@ public class HdfsPartialFileInputStream extends InputStream
     }
 
     @Override
-    public int read(byte[] b) throws IOException
+    public int read(byte[] b)
+            throws IOException
     {
         return read(b, 0, b.length);
     }
 
     @Override
-    public int read(byte[] b, int off, int len) throws IOException
+    public int read(byte[] b, int off, int len)
+            throws IOException
     {
         initializeIfNeeded();
 
@@ -45,7 +48,7 @@ public class HdfsPartialFileInputStream extends InputStream
 
         current += read;
         if (current >= end) {
-            for (int i = Math.max((int)(end - 1 - current + read), 0); i < read; i++) {
+            for (int i = Math.max((int) (end - 1 - current + read), 0); i < read; i++) {
                 if (b[off + i] == '\n') {
                     eof = true;
                     return i + 1;
@@ -65,7 +68,8 @@ public class HdfsPartialFileInputStream extends InputStream
     }
 
     @Override
-    public int read() throws IOException
+    public int read()
+            throws IOException
     {
         initializeIfNeeded();
 
@@ -91,7 +95,8 @@ public class HdfsPartialFileInputStream extends InputStream
     }
 
     @Override
-    public long skip(long n) throws IOException
+    public long skip(long n)
+            throws IOException
     {
         throw new IOException("Skip not supported.");
         /*
@@ -102,18 +107,21 @@ public class HdfsPartialFileInputStream extends InputStream
     }
 
     @Override
-    public int available() throws IOException
+    public int available()
+            throws IOException
     {
         return 0;
     }
 
     @Override
-    public void close() throws IOException
+    public void close()
+            throws IOException
     {
         original.close();
     }
 
-    private void initializeIfNeeded() throws IOException
+    private void initializeIfNeeded()
+            throws IOException
     {
         if (current >= start) {
             return;
@@ -144,7 +152,8 @@ public class HdfsPartialFileInputStream extends InputStream
         }
     }
 
-    private int prefetch() throws IOException
+    private int prefetch()
+            throws IOException
     {
         int c = original.read();
         if (c >= 0) {
