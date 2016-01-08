@@ -24,9 +24,14 @@ import org.jruby.embed.ScriptingContainer;
 import org.slf4j.Logger;
 
 import javax.annotation.Nullable;
+import java.io.BufferedInputStream;
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.SequenceInputStream;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
@@ -60,6 +65,10 @@ public class HdfsFileInputPlugin implements FileInputPlugin
         @Config("num_partitions") // this parameter is the approximate value.
         @ConfigDefault("-1")      // Default: Runtime.getRuntime().availableProcessors()
         public long getApproximateNumPartitions();
+
+        @Config("skip_header_lines") // Skip this number of lines first. Set 1 if the file has header line.
+        @ConfigDefault("0")          // The reason why the parameter is configured is that this plugin splits files.
+        public int getSkipHeaderLines();
 
         public List<HdfsPartialFile> getFiles();
         public void setFiles(List<HdfsPartialFile> hdfsFiles);
@@ -139,8 +148,14 @@ public class HdfsFileInputPlugin implements FileInputPlugin
         final PluginTask task = taskSource.loadTask(PluginTask.class);
 
         InputStream input;
+        final HdfsPartialFile file = task.getFiles().get(taskIndex);
         try {
-            input = openInputStream(task, task.getFiles().get(taskIndex));
+            if (file.getStart() > 0 && task.getSkipHeaderLines() > 0) {
+                input = new SequenceInputStream(getHeadersInputStream(task, file), openInputStream(task, file));
+            }
+            else {
+                input = openInputStream(task, file);
+            }
         }
         catch (IOException e) {
             logger.error(e.getMessage());
@@ -158,6 +173,41 @@ public class HdfsFileInputPlugin implements FileInputPlugin
                 return Exec.newTaskReport();
             }
         };
+    }
+
+    private InputStream getHeadersInputStream(PluginTask task, HdfsPartialFile partialFile) throws IOException
+    {
+        FileSystem fs = getFs(task);
+        ByteArrayOutputStream header = new ByteArrayOutputStream();
+        int skippedHeaders = 0;
+
+        try (BufferedInputStream in = new BufferedInputStream(fs.open(new Path(partialFile.getPath())))) {
+            while (true) {
+                int c = in.read();
+                if (c < 0) {
+                    break;
+                }
+
+                header.write(c);
+
+                if (c == '\n') {
+                    skippedHeaders++;
+                }
+                else if (c == '\r') {
+                    int c2 = in.read();
+                    if (c2 == '\n') {
+                        header.write(c2);
+                    }
+                    skippedHeaders++;
+                }
+
+                if (skippedHeaders >= task.getSkipHeaderLines()) {
+                    break;
+                }
+            }
+        }
+        header.close();
+        return new ByteArrayInputStream(header.toByteArray());
     }
 
     private static HdfsPartialFileInputStream openInputStream(PluginTask task, HdfsPartialFile partialFile)
@@ -245,6 +295,7 @@ public class HdfsFileInputPlugin implements FileInputPlugin
     private List<HdfsPartialFile> allocateHdfsFilesToTasks(final PluginTask task, final FileSystem fs, final List<String> fileList)
             throws IOException
     {
+
         List<Path> pathList = Lists.transform(fileList, new Function<String, Path>()
         {
             @Nullable
@@ -264,6 +315,9 @@ public class HdfsFileInputPlugin implements FileInputPlugin
         long approximateNumPartitions =
                 (task.getApproximateNumPartitions() <= 0) ? Runtime.getRuntime().availableProcessors() : task.getApproximateNumPartitions();
         long partitionSizeByOneTask = totalFileLength / approximateNumPartitions;
+        if (partitionSizeByOneTask <= 0) {
+            partitionSizeByOneTask = 1;
+        }
 
         List<HdfsPartialFile> hdfsPartialFiles = new ArrayList<>();
         for (Path path : pathList) {

@@ -18,6 +18,7 @@ Read files on Hdfs.
 - **rewind_seconds** When you use Date format in input_path property, the format is executed by using the time which is Now minus this property.
 - **partition** when this is true, partition input files and increase task count. (default: `true`)
 - **num_partitions** number of partitions. (default: `Runtime.getRuntime().availableProcessors()`)
+- **skip_header_lines** Skip this number of lines first. Set 1 if the file has header line. (default: `0`)
 
 ## Example
 

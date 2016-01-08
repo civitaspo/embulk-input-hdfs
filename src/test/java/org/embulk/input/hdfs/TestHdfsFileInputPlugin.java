@@ -159,6 +159,7 @@ public class TestHdfsFileInputPlugin
         return Exec.newConfigSource()
                 .set("path", path.toString())
                 .set("config", hdfsLocalFSConfig())
+                .set("skip_header_lines", 1)
                 .set("parser", parserConfig(schemaConfig()));
     }
 
