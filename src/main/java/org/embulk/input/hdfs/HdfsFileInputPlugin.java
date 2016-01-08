@@ -24,11 +24,11 @@ import org.jruby.embed.ScriptingContainer;
 import org.slf4j.Logger;
 
 import javax.annotation.Nullable;
+
 import java.io.BufferedInputStream;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
-import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.SequenceInputStream;
@@ -37,11 +37,13 @@ import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 
-public class HdfsFileInputPlugin implements FileInputPlugin
+public class HdfsFileInputPlugin
+        implements FileInputPlugin
 {
     private static final Logger logger = Exec.getLogger(HdfsFileInputPlugin.class);
 
-    public interface PluginTask extends Task
+    public interface PluginTask
+            extends Task
     {
         @Config("config_files")
         @ConfigDefault("[]")
@@ -71,6 +73,7 @@ public class HdfsFileInputPlugin implements FileInputPlugin
         public int getSkipHeaderLines();
 
         public List<HdfsPartialFile> getFiles();
+
         public void setFiles(List<HdfsPartialFile> hdfsFiles);
 
         @ConfigInject
@@ -114,8 +117,8 @@ public class HdfsFileInputPlugin implements FileInputPlugin
 
     @Override
     public ConfigDiff resume(TaskSource taskSource,
-                             int taskCount,
-                             FileInputPlugin.Control control)
+            int taskCount,
+            FileInputPlugin.Control control)
     {
         control.run(taskSource, taskCount);
 
@@ -137,8 +140,8 @@ public class HdfsFileInputPlugin implements FileInputPlugin
 
     @Override
     public void cleanup(TaskSource taskSource,
-                        int taskCount,
-                        List<TaskReport> successTaskReports)
+            int taskCount,
+            List<TaskReport> successTaskReports)
     {
     }
 
@@ -162,7 +165,8 @@ public class HdfsFileInputPlugin implements FileInputPlugin
             throw new RuntimeException(e);
         }
 
-        return new InputStreamTransactionalFileInput(task.getBufferAllocator(), input) {
+        return new InputStreamTransactionalFileInput(task.getBufferAllocator(), input)
+        {
             @Override
             public void abort()
             { }
@@ -175,7 +179,8 @@ public class HdfsFileInputPlugin implements FileInputPlugin
         };
     }
 
-    private InputStream getHeadersInputStream(PluginTask task, HdfsPartialFile partialFile) throws IOException
+    private InputStream getHeadersInputStream(PluginTask task, HdfsPartialFile partialFile)
+            throws IOException
     {
         FileSystem fs = getFs(task);
         ByteArrayOutputStream header = new ByteArrayOutputStream();
@@ -228,7 +233,7 @@ public class HdfsFileInputPlugin implements FileInputPlugin
             configuration.addResource(file.toURI().toURL());
         }
 
-        for (Map.Entry<String, String> entry: task.getConfig().entrySet()) {
+        for (Map.Entry<String, String> entry : task.getConfig().entrySet()) {
             configuration.set(entry.getKey(), entry.getValue());
         }
 
