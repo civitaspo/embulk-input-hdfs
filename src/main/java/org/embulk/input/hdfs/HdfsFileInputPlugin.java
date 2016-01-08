@@ -150,9 +150,11 @@ public class HdfsFileInputPlugin implements FileInputPlugin
         InputStream input;
         final HdfsPartialFile file = task.getFiles().get(taskIndex);
         try {
-            input = openInputStream(task, file);
             if (file.getStart() > 0 && task.getSkipHeaderLines() > 0) {
-                input = new SequenceInputStream(openHeaders(task, file), input);
+                input = new SequenceInputStream(getHeadersInputStream(task, file), openInputStream(task, file));
+            }
+            else {
+                input = openInputStream(task, file);
             }
         }
         catch (IOException e) {
@@ -173,7 +175,7 @@ public class HdfsFileInputPlugin implements FileInputPlugin
         };
     }
 
-    private InputStream openHeaders(PluginTask task, HdfsPartialFile partialFile) throws IOException
+    private InputStream getHeadersInputStream(PluginTask task, HdfsPartialFile partialFile) throws IOException
     {
         FileSystem fs = getFs(task);
         ByteArrayOutputStream header = new ByteArrayOutputStream();
