@@ -248,11 +248,11 @@ public class HdfsFileInputPlugin
         return FileSystem.get(configuration);
     }
 
-    private String strftime(final String raw, final int rewind_seconds)
+    private String strftime(final String raw, final int rewindSeconds)
     {
         ScriptingContainer jruby = new ScriptingContainer();
         Object resolved = jruby.runScriptlet(
-                String.format("(Time.now - %s).strftime('%s')", String.valueOf(rewind_seconds), raw));
+                String.format("(Time.now - %s).strftime('%s')", String.valueOf(rewindSeconds), raw));
         return resolved.toString();
     }
 
@@ -300,7 +300,6 @@ public class HdfsFileInputPlugin
     private List<HdfsPartialFile> allocateHdfsFilesToTasks(final PluginTask task, final FileSystem fs, final List<String> fileList)
             throws IOException
     {
-
         List<Path> pathList = Lists.transform(fileList, new Function<String, Path>()
         {
             @Nullable

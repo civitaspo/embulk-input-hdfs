@@ -18,7 +18,9 @@ public class HdfsPartialFile
     }
 
     // see: http://stackoverflow.com/questions/7625783/jsonmappingexception-no-suitable-constructor-found-for-type-simple-type-class
-    public HdfsPartialFile() { }
+    public HdfsPartialFile()
+    {
+    }
 
     public String getPath()
     {
