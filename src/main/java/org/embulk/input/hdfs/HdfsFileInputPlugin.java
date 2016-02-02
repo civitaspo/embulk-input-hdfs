@@ -41,6 +41,7 @@ public class HdfsFileInputPlugin
         implements FileInputPlugin
 {
     private static final Logger logger = Exec.getLogger(HdfsFileInputPlugin.class);
+    private static FileSystem fs;
 
     public interface PluginTask
             extends Task
@@ -224,6 +225,18 @@ public class HdfsFileInputPlugin
     }
 
     private static FileSystem getFs(final PluginTask task)
+        throws IOException
+    {
+        if (fs == null) {
+            setFs(task);
+            return fs;
+        }
+        else {
+            return fs;
+        }
+    }
+
+    private static FileSystem setFs(final PluginTask task)
             throws IOException
     {
         Configuration configuration = new Configuration();
@@ -238,9 +251,7 @@ public class HdfsFileInputPlugin
         }
 
         // For debug
-        Iterator<Map.Entry<String, String>> entryIterator = configuration.iterator();
-        while (entryIterator.hasNext()) {
-            Map.Entry<String, String> entry = entryIterator.next();
+        for (Map.Entry<String, String> entry : configuration) {
             logger.trace("{}: {}", entry.getKey(), entry.getValue());
         }
         logger.debug("Resource Files: {}", configuration);
