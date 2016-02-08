@@ -24,18 +24,26 @@ import org.jruby.embed.ScriptingContainer;
 import org.slf4j.Logger;
 
 import javax.annotation.Nullable;
+
+import java.io.BufferedInputStream;
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.SequenceInputStream;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 
-public class HdfsFileInputPlugin implements FileInputPlugin
+public class HdfsFileInputPlugin
+        implements FileInputPlugin
 {
     private static final Logger logger = Exec.getLogger(HdfsFileInputPlugin.class);
+    private static FileSystem fs;
 
-    public interface PluginTask extends Task
+    public interface PluginTask
+            extends Task
     {
         @Config("config_files")
         @ConfigDefault("[]")
@@ -60,7 +68,12 @@ public class HdfsFileInputPlugin implements FileInputPlugin
         @ConfigDefault("-1")      // Default: Runtime.getRuntime().availableProcessors()
         public long getApproximateNumPartitions();
 
+        @Config("skip_header_lines") // Skip this number of lines first. Set 1 if the file has header line.
+        @ConfigDefault("0")          // The reason why the parameter is configured is that this plugin splits files.
+        public int getSkipHeaderLines();
+
         public List<HdfsPartialFile> getFiles();
+
         public void setFiles(List<HdfsPartialFile> hdfsFiles);
 
         @ConfigInject
@@ -81,8 +94,8 @@ public class HdfsFileInputPlugin implements FileInputPlugin
                 throw new PathNotFoundException(pathString);
             }
 
+            logger.debug("embulk-input-hdfs: Loading target files: {}", originalFileList);
             task.setFiles(allocateHdfsFilesToTasks(task, getFs(task), originalFileList));
-            logger.info("embulk-input-hdfs: Loading target files: {}", originalFileList);
         }
         catch (IOException e) {
             logger.error(e.getMessage());
@@ -104,8 +117,8 @@ public class HdfsFileInputPlugin implements FileInputPlugin
 
     @Override
     public ConfigDiff resume(TaskSource taskSource,
-                             int taskCount,
-                             FileInputPlugin.Control control)
+            int taskCount,
+            FileInputPlugin.Control control)
     {
         control.run(taskSource, taskCount);
 
@@ -127,8 +140,8 @@ public class HdfsFileInputPlugin implements FileInputPlugin
 
     @Override
     public void cleanup(TaskSource taskSource,
-                        int taskCount,
-                        List<TaskReport> successTaskReports)
+            int taskCount,
+            List<TaskReport> successTaskReports)
     {
     }
 
@@ -138,15 +151,22 @@ public class HdfsFileInputPlugin implements FileInputPlugin
         final PluginTask task = taskSource.loadTask(PluginTask.class);
 
         InputStream input;
+        final HdfsPartialFile file = task.getFiles().get(taskIndex);
         try {
-            input = openInputStream(task, task.getFiles().get(taskIndex));
+            if (file.getStart() > 0 && task.getSkipHeaderLines() > 0) {
+                input = new SequenceInputStream(getHeadersInputStream(task, file), openInputStream(task, file));
+            }
+            else {
+                input = openInputStream(task, file);
+            }
         }
         catch (IOException e) {
             logger.error(e.getMessage());
             throw new RuntimeException(e);
         }
 
-        return new InputStreamTransactionalFileInput(task.getBufferAllocator(), input) {
+        return new InputStreamTransactionalFileInput(task.getBufferAllocator(), input)
+        {
             @Override
             public void abort()
             { }
@@ -159,6 +179,42 @@ public class HdfsFileInputPlugin implements FileInputPlugin
         };
     }
 
+    private InputStream getHeadersInputStream(PluginTask task, HdfsPartialFile partialFile)
+            throws IOException
+    {
+        FileSystem fs = getFs(task);
+        ByteArrayOutputStream header = new ByteArrayOutputStream();
+        int skippedHeaders = 0;
+
+        try (BufferedInputStream in = new BufferedInputStream(fs.open(new Path(partialFile.getPath())))) {
+            while (true) {
+                int c = in.read();
+                if (c < 0) {
+                    break;
+                }
+
+                header.write(c);
+
+                if (c == '\n') {
+                    skippedHeaders++;
+                }
+                else if (c == '\r') {
+                    int c2 = in.read();
+                    if (c2 == '\n') {
+                        header.write(c2);
+                    }
+                    skippedHeaders++;
+                }
+
+                if (skippedHeaders >= task.getSkipHeaderLines()) {
+                    break;
+                }
+            }
+        }
+        header.close();
+        return new ByteArrayInputStream(header.toByteArray());
+    }
+
     private static HdfsPartialFileInputStream openInputStream(PluginTask task, HdfsPartialFile partialFile)
             throws IOException
     {
@@ -168,6 +224,18 @@ public class HdfsFileInputPlugin implements FileInputPlugin
     }
 
     private static FileSystem getFs(final PluginTask task)
+        throws IOException
+    {
+        if (fs == null) {
+            setFs(task);
+            return fs;
+        }
+        else {
+            return fs;
+        }
+    }
+
+    private static FileSystem setFs(final PluginTask task)
             throws IOException
     {
         Configuration configuration = new Configuration();
@@ -177,18 +245,25 @@ public class HdfsFileInputPlugin implements FileInputPlugin
             configuration.addResource(file.toURI().toURL());
         }
 
-        for (Map.Entry<String, String> entry: task.getConfig().entrySet()) {
+        for (Map.Entry<String, String> entry : task.getConfig().entrySet()) {
             configuration.set(entry.getKey(), entry.getValue());
         }
 
-        return FileSystem.get(configuration);
+        // For debug
+        for (Map.Entry<String, String> entry : configuration) {
+            logger.trace("{}: {}", entry.getKey(), entry.getValue());
+        }
+        logger.debug("Resource Files: {}", configuration);
+
+        fs = FileSystem.get(configuration);
+        return fs;
     }
 
-    private String strftime(final String raw, final int rewind_seconds)
+    private String strftime(final String raw, final int rewindSeconds)
     {
         ScriptingContainer jruby = new ScriptingContainer();
         Object resolved = jruby.runScriptlet(
-                String.format("(Time.now - %s).strftime('%s')", String.valueOf(rewind_seconds), raw));
+                String.format("(Time.now - %s).strftime('%s')", String.valueOf(rewindSeconds), raw));
         return resolved.toString();
     }
 
@@ -255,6 +330,9 @@ public class HdfsFileInputPlugin implements FileInputPlugin
         long approximateNumPartitions =
                 (task.getApproximateNumPartitions() <= 0) ? Runtime.getRuntime().availableProcessors() : task.getApproximateNumPartitions();
         long partitionSizeByOneTask = totalFileLength / approximateNumPartitions;
+        if (partitionSizeByOneTask <= 0) {
+            partitionSizeByOneTask = 1;
+        }
 
         List<HdfsPartialFile> hdfsPartialFiles = new ArrayList<>();
         for (Path path : pathList) {

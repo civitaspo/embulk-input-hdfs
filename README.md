@@ -1,4 +1,6 @@
 # Hdfs file input plugin for Embulk
+[![Build Status](https://travis-ci.org/civitaspo/embulk-input-hdfs.svg)](https://travis-ci.org/civitaspo/embulk-input-hdfs)
+[![Coverage Status](https://coveralls.io/repos/civitaspo/embulk-input-hdfs/badge.svg?branch=master&service=github)](https://coveralls.io/github/civitaspo/embulk-input-hdfs?branch=master)
 
 Read files on Hdfs.
 
@@ -16,6 +18,7 @@ Read files on Hdfs.
 - **rewind_seconds** When you use Date format in input_path property, the format is executed by using the time which is Now minus this property.
 - **partition** when this is true, partition input files and increase task count. (default: `true`)
 - **num_partitions** number of partitions. (default: `Runtime.getRuntime().availableProcessors()`)
+- **skip_header_lines** Skip this number of lines first. Set 1 if the file has header line. (default: `0`)
 
 ## Example
 
@@ -23,8 +26,8 @@ Read files on Hdfs.
 in:
   type: hdfs
   config_files:
-    - /opt/analytics/etc/hadoop/conf/core-site.xml
-    - /opt/analytics/etc/hadoop/conf/hdfs-site.xml
+    - /etc/hadoop/conf/core-site.xml
+    - /etc/hadoop/conf/hdfs-site.xml
   config:
     fs.defaultFS: 'hdfs://hadoop-nn1:8020'
     dfs.replication: 1

@@ -1,7 +1,5 @@
 package org.embulk.input.hdfs;
 
-import org.apache.hadoop.fs.Path;
-
 /**
  * Created by takahiro.nakayama on 8/20/15.
  */
@@ -20,7 +18,9 @@ public class HdfsPartialFile
     }
 
     // see: http://stackoverflow.com/questions/7625783/jsonmappingexception-no-suitable-constructor-found-for-type-simple-type-class
-    public HdfsPartialFile() { }
+    public HdfsPartialFile()
+    {
+    }
 
     public String getPath()
     {
@@ -36,5 +36,4 @@ public class HdfsPartialFile
     {
         return end;
     }
-
 }

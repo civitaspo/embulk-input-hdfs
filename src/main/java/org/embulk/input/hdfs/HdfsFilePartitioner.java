@@ -23,7 +23,8 @@ public class HdfsFilePartitioner
         this.numPartitions = numPartitions;
     }
 
-    public List<HdfsPartialFile> getHdfsPartialFiles() throws IOException
+    public List<HdfsPartialFile> getHdfsPartialFiles()
+            throws IOException
     {
         List<HdfsPartialFile> hdfsPartialFiles = new ArrayList<>();
         long size = fs.getFileStatus(path).getLen();
