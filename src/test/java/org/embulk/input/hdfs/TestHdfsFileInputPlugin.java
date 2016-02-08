@@ -148,6 +148,18 @@ public class TestHdfsFileInputPlugin
         assertRecords(config, output, 4);
     }
 
+    @Test
+    public void testStrftime()
+    {
+        ConfigSource config = getConfigWithDefaultValues();
+        config.set("path", "/tmp/%Y-%m-%d");
+        config.set("rewind_seconds", 86400);
+        PluginTask task = config.loadConfig(PluginTask.class);
+        String result = plugin.strftime(task.getPath(), task.getRewindSeconds());
+        String expected = task.getJRuby().runScriptlet("(Time.now - 86400).strftime('/tmp/%Y-%m-%d')").toString();
+        assertEquals(expected, result);
+    }
+
     private class Control
             implements InputPlugin.Control
     {
