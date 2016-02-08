@@ -1,6 +1,7 @@
 package org.embulk.input.hdfs;
 
 import com.google.common.base.Function;
+import com.google.common.base.Optional;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Lists;
@@ -69,6 +70,8 @@ public class TestHdfsFileInputPlugin
         assertEquals(true, task.getPartition());
         assertEquals(0, task.getRewindSeconds());
         assertEquals(-1, task.getApproximateNumPartitions());
+        assertEquals(0, task.getSkipHeaderLines());
+        assertEquals(false, task.getUseCompressionCodec());
     }
 
     @Test(expected = ConfigException.class)
@@ -120,8 +123,9 @@ public class TestHdfsFileInputPlugin
     {
         ConfigSource config = getConfigWithDefaultValues();
         config.set("num_partitions", 10);
+        config.set("use_compression_codec", true);
         runner.transaction(config, new Control());
-        assertRecords(config, output);
+        assertRecords(config, output, 12);
     }
 
     @Test
@@ -129,8 +133,19 @@ public class TestHdfsFileInputPlugin
     {
         ConfigSource config = getConfigWithDefaultValues();
         config.set("partition", false);
+        config.set("use_compression_codec", true);
         runner.transaction(config, new Control());
-        assertRecords(config, output);
+        assertRecords(config, output, 12);
+    }
+
+    @Test
+    public void testHdfsFileInputByOpenWithoutCompressionCodec()
+    {
+        ConfigSource config = getConfigWithDefaultValues();
+        config.set("partition", false);
+        config.set("path", getClass().getResource("/sample_01.csv").getPath());
+        runner.transaction(config, new Control());
+        assertRecords(config, output, 4);
     }
 
     private class Control
@@ -201,10 +216,15 @@ public class TestHdfsFileInputPlugin
         return builder.build();
     }
 
-    private void assertRecords(ConfigSource config, MockPageOutput output)
+    private void assertRecords(ConfigSource config, MockPageOutput output, long size)
     {
         List<Object[]> records = getRecords(config, output);
-        assertEquals(8, records.size());
+        for (Object[] record : records) {
+            for (Object c : record) {
+                logger.info("{}", c);
+            }
+        }
+        assertEquals(size, records.size());
         {
             Object[] record = records.get(0);
             assertEquals(1L, record[0]);

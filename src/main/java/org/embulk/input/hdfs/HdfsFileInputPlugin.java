@@ -7,9 +7,13 @@ import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.fs.PathNotFoundException;
+import org.apache.hadoop.io.compress.CodecPool;
+import org.apache.hadoop.io.compress.CompressionCodec;
+import org.apache.hadoop.io.compress.CompressionCodecFactory;
 import org.embulk.config.Config;
 import org.embulk.config.ConfigDefault;
 import org.embulk.config.ConfigDiff;
+import org.embulk.config.ConfigException;
 import org.embulk.config.ConfigInject;
 import org.embulk.config.ConfigSource;
 import org.embulk.config.Task;
@@ -32,6 +36,7 @@ import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.SequenceInputStream;
+import java.net.MalformedURLException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -71,6 +76,10 @@ public class HdfsFileInputPlugin
         @Config("skip_header_lines") // Skip this number of lines first. Set 1 if the file has header line.
         @ConfigDefault("0")          // The reason why the parameter is configured is that this plugin splits files.
         int getSkipHeaderLines();
+
+        @Config("use_compression_codec")
+        @ConfigDefault("false")
+        boolean getUseCompressionCodec();
 
         List<HdfsPartialFile> getFiles();
         void setFiles(List<HdfsPartialFile> hdfsFiles);
@@ -181,8 +190,21 @@ public class HdfsFileInputPlugin
         FileSystem fs = getFs(task);
         ByteArrayOutputStream header = new ByteArrayOutputStream();
         int skippedHeaders = 0;
+        final InputStream hdfsFileInputStream;
+        Path hdfsFile = new Path(partialFile.getPath());
+        CompressionCodec codec = getCodecFactory(task).getCodec(hdfsFile);
+        if (codec == null) {
+            hdfsFileInputStream = fs.open(hdfsFile);
+        }
+        else {
+            if (!task.getUseCompressionCodec()) {
+                throw new ConfigException("`skip_header_line` must be with `use_compression_codec` option");
+            }
+            hdfsFileInputStream = codec.createInputStream(fs.open(hdfsFile));
+        }
 
-        try (BufferedInputStream in = new BufferedInputStream(fs.open(new Path(partialFile.getPath())))) {
+
+        try (BufferedInputStream in = new BufferedInputStream(hdfsFileInputStream)) {
             while (true) {
                 int c = in.read();
                 if (c < 0) {
@@ -215,7 +237,15 @@ public class HdfsFileInputPlugin
             throws IOException
     {
         FileSystem fs = getFs(task);
-        InputStream original = fs.open(new Path(partialFile.getPath()));
+        Path path = new Path(partialFile.getPath());
+        final InputStream original;
+        CompressionCodec codec = getCodecFactory(task).getCodec(path);
+        if (codec == null) {
+            original = fs.open(path);
+        }
+        else {
+            original = codec.createInputStream(fs.open(path));
+        }
         return new HdfsPartialFileInputStream(original, partialFile.getStart(), partialFile.getEnd());
     }
 
@@ -253,6 +283,23 @@ public class HdfsFileInputPlugin
 
         fs = FileSystem.get(configuration);
         return fs;
+    }
+
+    private static CompressionCodecFactory getCodecFactory(PluginTask task)
+            throws MalformedURLException
+    {
+        Configuration configuration = new Configuration();
+
+        for (String configFile : task.getConfigFiles()) {
+            File file = new File(configFile);
+            configuration.addResource(file.toURI().toURL());
+        }
+
+        for (Map.Entry<String, String> entry : task.getConfig().entrySet()) {
+            configuration.set(entry.getKey(), entry.getValue());
+        }
+
+        return new CompressionCodecFactory(configuration);
     }
 
     private String strftime(final String raw, final int rewindSeconds)
@@ -332,7 +379,22 @@ public class HdfsFileInputPlugin
 
         List<HdfsPartialFile> hdfsPartialFiles = new ArrayList<>();
         for (Path path : pathList) {
-            long fileLength = fs.getFileStatus(path).getLen(); // declare `fileLength` here because this is used below.
+            long fileLength = 0;
+            CompressionCodec codec = getCodecFactory(task).getCodec(path);
+            if (codec == null) {
+                fileLength = fs.getFileStatus(path).getLen();
+            }
+            else if (!task.getUseCompressionCodec()) {
+                fileLength = fs.getFileStatus(path).getLen();
+            }
+            else {
+                InputStream i = codec.createInputStream(fs.open(path));
+                while (i.read() > 0) {
+                    fileLength++;
+                }
+            }
+            logger.info("file: {}, length: {}", path, fileLength);
+            // long fileLength = fs.getFileStatus(path).getLen(); // declare `fileLength` here because this is used below.
             if (fileLength <= 0) {
                 logger.info("embulk-input-hdfs: Skip the 0 byte target file: {}", path);
                 continue;
@@ -340,7 +402,12 @@ public class HdfsFileInputPlugin
 
             long numPartitions;
             if (path.toString().endsWith(".gz") || path.toString().endsWith(".bz2") || path.toString().endsWith(".lzo")) {
-                numPartitions = 1;
+                if (task.getUseCompressionCodec()) {
+                    numPartitions = ((fileLength - 1) / partitionSizeByOneTask) + 1;
+                }
+                else {
+                    numPartitions = 1;
+                }
             }
             else if (!task.getPartition()) {
                 numPartitions = 1;
@@ -349,7 +416,7 @@ public class HdfsFileInputPlugin
                 numPartitions = ((fileLength - 1) / partitionSizeByOneTask) + 1;
             }
 
-            HdfsFilePartitioner partitioner = new HdfsFilePartitioner(fs, path, numPartitions);
+            HdfsFilePartitioner partitioner = new HdfsFilePartitioner(fs, path, numPartitions, fileLength);
             hdfsPartialFiles.addAll(partitioner.getHdfsPartialFiles());
         }
 
