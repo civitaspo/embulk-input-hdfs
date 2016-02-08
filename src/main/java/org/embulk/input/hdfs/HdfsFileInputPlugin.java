@@ -255,7 +255,8 @@ public class HdfsFileInputPlugin
         }
         logger.debug("Resource Files: {}", configuration);
 
-        return FileSystem.get(configuration);
+        fs = FileSystem.get(configuration);
+        return fs;
     }
 
     private String strftime(final String raw, final int rewindSeconds)
