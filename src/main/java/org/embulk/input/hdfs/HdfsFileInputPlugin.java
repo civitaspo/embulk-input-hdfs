@@ -233,7 +233,7 @@ public class HdfsFileInputPlugin
         return new ByteArrayInputStream(header.toByteArray());
     }
 
-    private static HdfsPartialFileInputStream openInputStream(PluginTask task, HdfsPartialFile partialFile)
+    private HdfsPartialFileInputStream openInputStream(PluginTask task, HdfsPartialFile partialFile)
             throws IOException
     {
         FileSystem fs = getFs(task);
@@ -249,7 +249,7 @@ public class HdfsFileInputPlugin
         return new HdfsPartialFileInputStream(original, partialFile.getStart(), partialFile.getEnd());
     }
 
-    private static FileSystem getFs(final PluginTask task)
+    private FileSystem getFs(final PluginTask task)
         throws IOException
     {
         if (fs == null) {
@@ -261,7 +261,7 @@ public class HdfsFileInputPlugin
         }
     }
 
-    private static FileSystem setFs(final PluginTask task)
+    private FileSystem setFs(final PluginTask task)
             throws IOException
     {
         Configuration configuration = new Configuration();
@@ -285,7 +285,7 @@ public class HdfsFileInputPlugin
         return fs;
     }
 
-    private static CompressionCodecFactory getCodecFactory(PluginTask task)
+    private CompressionCodecFactory getCodecFactory(PluginTask task)
             throws MalformedURLException
     {
         Configuration configuration = new Configuration();
