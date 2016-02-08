@@ -47,37 +47,37 @@ public class HdfsFileInputPlugin
     {
         @Config("config_files")
         @ConfigDefault("[]")
-        public List<String> getConfigFiles();
+        List<String> getConfigFiles();
 
         @Config("config")
         @ConfigDefault("{}")
-        public Map<String, String> getConfig();
+        Map<String, String> getConfig();
 
         @Config("path")
-        public String getPath();
+        String getPath();
 
         @Config("rewind_seconds")
         @ConfigDefault("0")
-        public int getRewindSeconds();
+        int getRewindSeconds();
 
         @Config("partition")
         @ConfigDefault("true")
-        public boolean getPartition();
+        boolean getPartition();
 
         @Config("num_partitions") // this parameter is the approximate value.
         @ConfigDefault("-1")      // Default: Runtime.getRuntime().availableProcessors()
-        public long getApproximateNumPartitions();
+        long getApproximateNumPartitions();
 
         @Config("skip_header_lines") // Skip this number of lines first. Set 1 if the file has header line.
         @ConfigDefault("0")          // The reason why the parameter is configured is that this plugin splits files.
-        public int getSkipHeaderLines();
+        int getSkipHeaderLines();
 
-        public List<HdfsPartialFile> getFiles();
+        List<HdfsPartialFile> getFiles();
 
-        public void setFiles(List<HdfsPartialFile> hdfsFiles);
+        void setFiles(List<HdfsPartialFile> hdfsFiles);
 
         @ConfigInject
-        public BufferAllocator getBufferAllocator();
+        BufferAllocator getBufferAllocator();
     }
 
     @Override
