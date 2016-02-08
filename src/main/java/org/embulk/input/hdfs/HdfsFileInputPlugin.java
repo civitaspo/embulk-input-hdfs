@@ -73,11 +73,7 @@ public class HdfsFileInputPlugin
         int getSkipHeaderLines();
 
         List<HdfsPartialFile> getFiles();
-
         void setFiles(List<HdfsPartialFile> hdfsFiles);
-
-        @ConfigInject
-        BufferAllocator getBufferAllocator();
     }
 
     @Override
@@ -165,7 +161,7 @@ public class HdfsFileInputPlugin
             throw new RuntimeException(e);
         }
 
-        return new InputStreamTransactionalFileInput(task.getBufferAllocator(), input)
+        return new InputStreamTransactionalFileInput(Exec.getBufferAllocator(), input)
         {
             @Override
             public void abort()
