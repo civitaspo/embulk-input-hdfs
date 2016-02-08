@@ -1,5 +1,6 @@
 package org.embulk.input.hdfs;
 
+import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Function;
 import com.google.common.collect.Lists;
 import org.apache.hadoop.conf.Configuration;
@@ -83,6 +84,9 @@ public class HdfsFileInputPlugin
 
         List<HdfsPartialFile> getFiles();
         void setFiles(List<HdfsPartialFile> hdfsFiles);
+
+        @ConfigInject
+        ScriptingContainer getJRuby();
     }
 
     @Override
@@ -91,7 +95,7 @@ public class HdfsFileInputPlugin
         PluginTask task = config.loadConfig(PluginTask.class);
 
         // listing Files
-        String pathString = strftime(task.getPath(), task.getRewindSeconds());
+        String pathString = strftime(task, task.getPath(), task.getRewindSeconds());
         try {
             List<String> originalFileList = buildFileList(getFs(task), pathString);
 
@@ -302,12 +306,11 @@ public class HdfsFileInputPlugin
         return new CompressionCodecFactory(configuration);
     }
 
-    private String strftime(final String raw, final int rewindSeconds)
+    @VisibleForTesting
+    String strftime(final PluginTask task, final String format, final int rewindSeconds)
     {
-        ScriptingContainer jruby = new ScriptingContainer();
-        Object resolved = jruby.runScriptlet(
-                String.format("(Time.now - %s).strftime('%s')", String.valueOf(rewindSeconds), raw));
-        return resolved.toString();
+        String script = String.format("(Time.now - %d).strftime('%s')", rewindSeconds, format);
+        return task.getJRuby().runScriptlet(script).toString();
     }
 
     private List<String> buildFileList(final FileSystem fs, final String pathString)

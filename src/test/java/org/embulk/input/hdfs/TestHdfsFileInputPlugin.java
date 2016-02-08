@@ -155,7 +155,7 @@ public class TestHdfsFileInputPlugin
         config.set("path", "/tmp/%Y-%m-%d");
         config.set("rewind_seconds", 86400);
         PluginTask task = config.loadConfig(PluginTask.class);
-        String result = plugin.strftime(task.getPath(), task.getRewindSeconds());
+        String result = plugin.strftime(task, task.getPath(), task.getRewindSeconds());
         String expected = task.getJRuby().runScriptlet("(Time.now - 86400).strftime('/tmp/%Y-%m-%d')").toString();
         assertEquals(expected, result);
     }
