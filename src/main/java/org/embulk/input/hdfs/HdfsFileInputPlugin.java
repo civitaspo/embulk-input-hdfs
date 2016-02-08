@@ -13,6 +13,7 @@ import org.apache.hadoop.io.compress.CompressionCodecFactory;
 import org.embulk.config.Config;
 import org.embulk.config.ConfigDefault;
 import org.embulk.config.ConfigDiff;
+import org.embulk.config.ConfigException;
 import org.embulk.config.ConfigInject;
 import org.embulk.config.ConfigSource;
 import org.embulk.config.Task;
@@ -75,6 +76,10 @@ public class HdfsFileInputPlugin
         @Config("skip_header_lines") // Skip this number of lines first. Set 1 if the file has header line.
         @ConfigDefault("0")          // The reason why the parameter is configured is that this plugin splits files.
         int getSkipHeaderLines();
+
+        @Config("use_compression_codec")
+        @ConfigDefault("false")
+        boolean getUseCompressionCodec();
 
         List<HdfsPartialFile> getFiles();
         void setFiles(List<HdfsPartialFile> hdfsFiles);
@@ -192,6 +197,9 @@ public class HdfsFileInputPlugin
             hdfsFileInputStream = fs.open(hdfsFile);
         }
         else {
+            if (!task.getUseCompressionCodec()) {
+                throw new ConfigException("`skip_header_line` must be with `use_compression_codec` option");
+            }
             hdfsFileInputStream = codec.createInputStream(fs.open(hdfsFile));
         }
 
@@ -376,6 +384,9 @@ public class HdfsFileInputPlugin
             if (codec == null) {
                 fileLength = fs.getFileStatus(path).getLen();
             }
+            else if (!task.getUseCompressionCodec()) {
+                fileLength = fs.getFileStatus(path).getLen();
+            }
             else {
                 InputStream i = codec.createInputStream(fs.open(path));
                 while (i.read() > 0) {
@@ -390,11 +401,15 @@ public class HdfsFileInputPlugin
             }
 
             long numPartitions;
-//            if (path.toString().endsWith(".gz") || path.toString().endsWith(".bz2") || path.toString().endsWith(".lzo")) {
-//                numPartitions = 1;
-//            }
-//            else
-            if (!task.getPartition()) {
+            if (path.toString().endsWith(".gz") || path.toString().endsWith(".bz2") || path.toString().endsWith(".lzo")) {
+                if (task.getUseCompressionCodec()) {
+                    numPartitions = ((fileLength - 1) / partitionSizeByOneTask) + 1;
+                }
+                else {
+                    numPartitions = 1;
+                }
+            }
+            else if (!task.getPartition()) {
                 numPartitions = 1;
             }
             else {
