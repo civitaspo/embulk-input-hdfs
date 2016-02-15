@@ -12,6 +12,7 @@ import org.embulk.config.ConfigSource;
 import org.embulk.config.TaskReport;
 import org.embulk.config.TaskSource;
 import org.embulk.input.hdfs.HdfsFileInputPlugin.PluginTask;
+import org.embulk.input.hdfs.file.HDFSPartialFile;
 import org.embulk.spi.Exec;
 import org.embulk.spi.FileInputPlugin;
 import org.embulk.spi.FileInputRunner;
@@ -101,17 +102,19 @@ public class TestHdfsFileInputPlugin
                     }
                 });
 
-                List<String> resultFList = Lists.transform(task.getFiles(), new Function<HdfsPartialFile, String>()
+                List<String> resultFList = Lists.transform(plugin.getHDFSPartialFiles(), new Function<HDFSPartialFile, String>()
                 {
                     @Nullable
                     @Override
-                    public String apply(@Nullable HdfsPartialFile input)
+                    public String apply(@Nullable HDFSPartialFile input)
                     {
                         assert input != null;
-                        return input.getPath();
+                        return input.getPath().toString();
                     }
                 });
-                assertEquals(fileList, resultFList);
+
+                assertEquals(fileList.size(), resultFList.size());
+                assert(fileList.containsAll(resultFList));
                 return emptyTaskReports(taskCount);
             }
         });
@@ -230,6 +233,9 @@ public class TestHdfsFileInputPlugin
     private void assertRecords(ConfigSource config, MockPageOutput output, long size)
     {
         List<Object[]> records = getRecords(config, output);
+        for (Object record : records) {
+            logger.error("{}", record);
+        }
         assertEquals(size, records.size());
         {
             Object[] record = records.get(0);
