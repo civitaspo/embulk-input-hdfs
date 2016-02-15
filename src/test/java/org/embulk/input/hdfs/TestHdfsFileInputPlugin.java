@@ -114,7 +114,7 @@ public class TestHdfsFileInputPlugin
                 });
 
                 assertEquals(fileList.size(), resultFList.size());
-                assert(fileList.containsAll(resultFList));
+                assert fileList.containsAll(resultFList);
                 return emptyTaskReports(taskCount);
             }
         });

@@ -13,9 +13,14 @@ import java.util.Map;
 /**
  * Created by takahiro.nakayama on 2/9/16.
  */
+
 public class ConfigurationFactory
 {
     private static final Logger logger = Exec.getLogger(ConfigurationFactory.class);
+
+    private ConfigurationFactory()
+    {
+    }
 
     public static Configuration fromTask(PluginTask task)
     {
