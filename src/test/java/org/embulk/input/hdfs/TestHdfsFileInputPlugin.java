@@ -1,7 +1,6 @@
 package org.embulk.input.hdfs;
 
 import com.google.common.base.Function;
-import com.google.common.base.Optional;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Lists;
@@ -71,7 +70,7 @@ public class TestHdfsFileInputPlugin
         assertEquals(0, task.getRewindSeconds());
         assertEquals(-1, task.getApproximateNumPartitions());
         assertEquals(0, task.getSkipHeaderLines());
-        assertEquals(false, task.getUseCompressionCodec());
+        assertEquals(false, task.getDecompression());
     }
 
     @Test(expected = ConfigException.class)
@@ -123,7 +122,7 @@ public class TestHdfsFileInputPlugin
     {
         ConfigSource config = getConfigWithDefaultValues();
         config.set("num_partitions", 10);
-        config.set("use_compression_codec", true);
+        config.set("decompression", true);
         runner.transaction(config, new Control());
         assertRecords(config, output, 12);
     }
@@ -133,7 +132,7 @@ public class TestHdfsFileInputPlugin
     {
         ConfigSource config = getConfigWithDefaultValues();
         config.set("partition", false);
-        config.set("use_compression_codec", true);
+        config.set("decompression", true);
         runner.transaction(config, new Control());
         assertRecords(config, output, 12);
     }

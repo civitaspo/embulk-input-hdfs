@@ -6,15 +6,12 @@ import com.google.common.base.Optional;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Lists;
-import com.google.common.collect.Maps;
-import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.fs.PathIOException;
 import org.apache.hadoop.fs.PathNotFoundException;
 import org.apache.hadoop.io.compress.CompressionCodec;
-import org.apache.hadoop.io.compress.CompressionCodecFactory;
 import org.embulk.config.Config;
 import org.embulk.config.ConfigDefault;
 import org.embulk.config.ConfigDiff;
@@ -37,11 +34,9 @@ import javax.annotation.Nullable;
 import java.io.BufferedInputStream;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
-import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.SequenceInputStream;
-import java.net.MalformedURLException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -81,9 +76,9 @@ public class HdfsFileInputPlugin
         @ConfigDefault("0")          // The reason why the parameter is configured is that this plugin splits files.
         int getSkipHeaderLines();
 
-        @Config("use_compression_codec") // if true, use compression codec when getting FileInputStream.
-        @ConfigDefault("false")
-        boolean getUseCompressionCodec();
+        @Config("decompression") // if true, decompress files by using compression codec
+        @ConfigDefault("false")  // when getting FileInputStream.
+        boolean getDecompression();
 
         List<HdfsPartialFile> getFiles();
         void setFiles(List<HdfsPartialFile> hdfsFiles);
@@ -194,7 +189,7 @@ public class HdfsFileInputPlugin
         for (Path path : pathList) {
             long fileLength = 0;
             Optional<CompressionCodec> codec = hdfs.getCompressionCodec(path);
-            if (codec.isPresent() && task.getUseCompressionCodec()) {
+            if (codec.isPresent() && task.getDecompression()) {
                 InputStream is = codec.get().createInputStream(hdfs.getFS().open(path));
 //                fileLength += is.available();
                 while (is.read() > 0) {
@@ -236,7 +231,7 @@ public class HdfsFileInputPlugin
 
             long numPartitions;
             if (task.getPartition()) {
-                if (codec.isPresent() && task.getUseCompressionCodec()) {
+                if (codec.isPresent() && task.getDecompression()) {
                     numPartitions = ((fileLength - 1) / partitionSizeByOneTask) + 1;
                 }
                 else if (path.toString().endsWith(".gz") || path.toString().endsWith(".bz2") || path.toString().endsWith(".lzo")) {
@@ -318,7 +313,7 @@ public class HdfsFileInputPlugin
         Path hdfsFile = new Path(partialFile.getPath());
         Optional<CompressionCodec> codec = hdfs.getCompressionCodec(hdfsFile);
         if (codec.isPresent()) {
-            if (!task.getUseCompressionCodec()) {
+            if (!task.getDecompression()) {
                 throw new ConfigException("`skip_header_line` must be with `use_compression_codec` option");
             }
             hdfsFileInputStream = codec.get().createInputStream(hdfs.getFS().open(hdfsFile));
