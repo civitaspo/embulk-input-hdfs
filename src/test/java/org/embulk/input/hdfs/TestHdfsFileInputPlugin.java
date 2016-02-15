@@ -233,9 +233,6 @@ public class TestHdfsFileInputPlugin
     private void assertRecords(ConfigSource config, MockPageOutput output, long size)
     {
         List<Object[]> records = getRecords(config, output);
-        for (Object record : records) {
-            logger.error("{}", record);
-        }
         assertEquals(size, records.size());
         {
             Object[] record = records.get(0);
