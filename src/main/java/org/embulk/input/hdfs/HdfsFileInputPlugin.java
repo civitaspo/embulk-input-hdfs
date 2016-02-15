@@ -2,13 +2,17 @@ package org.embulk.input.hdfs;
 
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Function;
+import com.google.common.base.Optional;
+import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.Lists;
+import com.google.common.collect.Maps;
 import org.apache.hadoop.conf.Configuration;
 import org.apache.hadoop.fs.FileStatus;
 import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
+import org.apache.hadoop.fs.PathIOException;
 import org.apache.hadoop.fs.PathNotFoundException;
-import org.apache.hadoop.io.compress.CodecPool;
 import org.apache.hadoop.io.compress.CompressionCodec;
 import org.apache.hadoop.io.compress.CompressionCodecFactory;
 import org.embulk.config.Config;
@@ -20,7 +24,7 @@ import org.embulk.config.ConfigSource;
 import org.embulk.config.Task;
 import org.embulk.config.TaskReport;
 import org.embulk.config.TaskSource;
-import org.embulk.spi.BufferAllocator;
+import org.embulk.input.hdfs.util.Hdfs;
 import org.embulk.spi.Exec;
 import org.embulk.spi.FileInputPlugin;
 import org.embulk.spi.TransactionalFileInput;
@@ -46,7 +50,6 @@ public class HdfsFileInputPlugin
         implements FileInputPlugin
 {
     private static final Logger logger = Exec.getLogger(HdfsFileInputPlugin.class);
-    private static FileSystem fs;
 
     public interface PluginTask
             extends Task
@@ -78,7 +81,7 @@ public class HdfsFileInputPlugin
         @ConfigDefault("0")          // The reason why the parameter is configured is that this plugin splits files.
         int getSkipHeaderLines();
 
-        @Config("use_compression_codec")
+        @Config("use_compression_codec") // if true, use compression codec when getting FileInputStream.
         @ConfigDefault("false")
         boolean getUseCompressionCodec();
 
@@ -93,18 +96,19 @@ public class HdfsFileInputPlugin
     public ConfigDiff transaction(ConfigSource config, FileInputPlugin.Control control)
     {
         PluginTask task = config.loadConfig(PluginTask.class);
+        Hdfs hdfs = new Hdfs(task);
 
         // listing Files
         String pathString = strftime(task, task.getPath(), task.getRewindSeconds());
         try {
-            List<String> originalFileList = buildFileList(getFs(task), pathString);
+            List<String> originalFileList = buildFileList(hdfs.getFS(), pathString);
 
             if (originalFileList.isEmpty()) {
                 throw new PathNotFoundException(pathString);
             }
 
             logger.debug("embulk-input-hdfs: Loading target files: {}", originalFileList);
-            task.setFiles(allocateHdfsFilesToTasks(task, getFs(task), originalFileList));
+            task.setFiles(allocateHdfsFilesToTasks(task, hdfs, originalFileList));
         }
         catch (IOException e) {
             logger.error(e.getMessage());
@@ -124,26 +128,142 @@ public class HdfsFileInputPlugin
         return resume(task.dump(), taskCount, control);
     }
 
+    @VisibleForTesting
+    String strftime(final PluginTask task, final String format, final int rewindSeconds)
+    {
+        String script = String.format("(Time.now - %d).strftime('%s')", rewindSeconds, format);
+        return task.getJRuby().runScriptlet(script).toString();
+    }
+
+    private List<String> buildFileList(final FileSystem fs, final String pathString)
+            throws IOException
+    {
+        List<String> fileList = new ArrayList<>();
+        Path rootPath = new Path(pathString);
+
+        final FileStatus[] entries = fs.globStatus(rootPath);
+        // `globStatus` does not throw PathNotFoundException.
+        // return null instead.
+        // see: https://github.com/apache/hadoop/blob/branch-2.7.0/hadoop-common-project/hadoop-common/src/main/java/org/apache/hadoop/fs/Globber.java#L286
+        if (entries == null) {
+            return fileList;
+        }
+
+        for (FileStatus entry : entries) {
+            if (entry.isDirectory()) {
+                fileList.addAll(listRecursive(fs, entry));
+            }
+            else {
+                fileList.add(entry.getPath().toString());
+            }
+        }
+
+        return fileList;
+    }
+
+    private List<String> listRecursive(final FileSystem fs, FileStatus status)
+            throws IOException
+    {
+        List<String> fileList = new ArrayList<>();
+        if (status.isDirectory()) {
+            for (FileStatus entry : fs.listStatus(status.getPath())) {
+                fileList.addAll(listRecursive(fs, entry));
+            }
+        }
+        else {
+            fileList.add(status.getPath().toString());
+        }
+        return fileList;
+    }
+
+    private List<HdfsPartialFile> allocateHdfsFilesToTasks(PluginTask task, Hdfs hdfs, List<String> fileList)
+            throws IOException
+    {
+        List<Path> pathList = Lists.transform(fileList, new Function<String, Path>()
+        {
+            @Nullable
+            @Override
+            public Path apply(@Nullable String input)
+            {
+                return new Path(input);
+            }
+        });
+
+        ImmutableMap.Builder<Path, Long> pathLongBuilder = ImmutableMap.builder();
+        long totalFileLength = 0;
+        for (Path path : pathList) {
+            long fileLength = 0;
+            Optional<CompressionCodec> codec = hdfs.getCompressionCodec(path);
+            if (codec.isPresent() && task.getUseCompressionCodec()) {
+                InputStream is = codec.get().createInputStream(hdfs.getFS().open(path));
+//                fileLength += is.available();
+                while (is.read() > 0) {
+                    fileLength++;
+                }
+                is.close();
+                logger.info("`embulk-input-hdfs`: file: {}, length: {}, codec: {}", path, fileLength, codec.get().toString());
+            }
+            else {
+                fileLength = hdfs.getFS().getFileStatus(path).getLen();
+                logger.info("`embulk-input-hdfs`: file: {}, length: {}, codec: null", path, fileLength);
+            }
+
+            if (fileLength <= 0) {
+                logger.info("`embulk-input-hdfs`: Skip the 0 byte target file: {}", path);
+                continue;
+            }
+
+            pathLongBuilder.put(path, fileLength);
+            totalFileLength += fileLength;
+        }
+        if (totalFileLength <= 0) {
+            throw new PathIOException(task.getPath(), "`embulk-input-hdfs`: data is empty");
+        }
+
+        // TODO: optimum allocation of resources
+        long approximateNumPartitions =
+                (task.getApproximateNumPartitions() <= 0) ? Runtime.getRuntime().availableProcessors() : task.getApproximateNumPartitions();
+        long partitionSizeByOneTask = totalFileLength / approximateNumPartitions;
+        if (partitionSizeByOneTask <= 0) {
+            partitionSizeByOneTask = 1;
+        }
+
+        ImmutableList.Builder<HdfsPartialFile> hdfsPartialFileBuilder = ImmutableList.builder();
+        for (Map.Entry<Path, Long> entry : pathLongBuilder.build().entrySet()) {
+            Path path = entry.getKey();
+            long fileLength = entry.getValue();
+            Optional<CompressionCodec> codec = hdfs.getCompressionCodec(path);
+
+            long numPartitions;
+            if (task.getPartition()) {
+                if (codec.isPresent() && task.getUseCompressionCodec()) {
+                    numPartitions = ((fileLength - 1) / partitionSizeByOneTask) + 1;
+                }
+                else if (path.toString().endsWith(".gz") || path.toString().endsWith(".bz2") || path.toString().endsWith(".lzo")) {
+                    numPartitions = 1;
+                }
+                else {
+                    numPartitions = ((fileLength - 1) / partitionSizeByOneTask) + 1;
+                }
+            }
+            else {
+                numPartitions = 1;
+            }
+
+            HdfsFilePartitioner partitioner = new HdfsFilePartitioner(hdfs.getFS(), path, numPartitions, fileLength);
+            hdfsPartialFileBuilder.addAll(partitioner.getHdfsPartialFiles());
+        }
+
+        return hdfsPartialFileBuilder.build();
+    }
+
     @Override
     public ConfigDiff resume(TaskSource taskSource,
             int taskCount,
             FileInputPlugin.Control control)
     {
         control.run(taskSource, taskCount);
-
         ConfigDiff configDiff = Exec.newConfigDiff();
-
-        // usually, yo use last_path
-        //if (task.getFiles().isEmpty()) {
-        //    if (task.getLastPath().isPresent()) {
-        //        configDiff.set("last_path", task.getLastPath().get());
-        //    }
-        //} else {
-        //    List<String> files = new ArrayList<String>(task.getFiles());
-        //    Collections.sort(files);
-        //    configDiff.set("last_path", files.get(files.size() - 1));
-        //}
-
         return configDiff;
     }
 
@@ -158,15 +278,16 @@ public class HdfsFileInputPlugin
     public TransactionalFileInput open(TaskSource taskSource, int taskIndex)
     {
         final PluginTask task = taskSource.loadTask(PluginTask.class);
+        final Hdfs hdfs = new Hdfs(task);
 
         InputStream input;
         final HdfsPartialFile file = task.getFiles().get(taskIndex);
         try {
             if (file.getStart() > 0 && task.getSkipHeaderLines() > 0) {
-                input = new SequenceInputStream(getHeadersInputStream(task, file), openInputStream(task, file));
+                input = new SequenceInputStream(getHeadersInputStream(task, hdfs, file), openInputStream(task, hdfs, file));
             }
             else {
-                input = openInputStream(task, file);
+                input = openInputStream(task, hdfs, file);
             }
         }
         catch (IOException e) {
@@ -188,25 +309,23 @@ public class HdfsFileInputPlugin
         };
     }
 
-    private InputStream getHeadersInputStream(PluginTask task, HdfsPartialFile partialFile)
+    private InputStream getHeadersInputStream(PluginTask task, Hdfs hdfs, HdfsPartialFile partialFile)
             throws IOException
     {
-        FileSystem fs = getFs(task);
         ByteArrayOutputStream header = new ByteArrayOutputStream();
         int skippedHeaders = 0;
         final InputStream hdfsFileInputStream;
         Path hdfsFile = new Path(partialFile.getPath());
-        CompressionCodec codec = getCodecFactory(task).getCodec(hdfsFile);
-        if (codec == null) {
-            hdfsFileInputStream = fs.open(hdfsFile);
-        }
-        else {
+        Optional<CompressionCodec> codec = hdfs.getCompressionCodec(hdfsFile);
+        if (codec.isPresent()) {
             if (!task.getUseCompressionCodec()) {
                 throw new ConfigException("`skip_header_line` must be with `use_compression_codec` option");
             }
-            hdfsFileInputStream = codec.createInputStream(fs.open(hdfsFile));
+            hdfsFileInputStream = codec.get().createInputStream(hdfs.getFS().open(hdfsFile));
         }
-
+        else {
+            hdfsFileInputStream = hdfs.getFS().open(hdfsFile);
+        }
 
         try (BufferedInputStream in = new BufferedInputStream(hdfsFileInputStream)) {
             while (true) {
@@ -237,192 +356,18 @@ public class HdfsFileInputPlugin
         return new ByteArrayInputStream(header.toByteArray());
     }
 
-    private HdfsPartialFileInputStream openInputStream(PluginTask task, HdfsPartialFile partialFile)
+    private HdfsPartialFileInputStream openInputStream(PluginTask task, Hdfs hdfs, HdfsPartialFile partialFile)
             throws IOException
     {
-        FileSystem fs = getFs(task);
         Path path = new Path(partialFile.getPath());
         final InputStream original;
-        CompressionCodec codec = getCodecFactory(task).getCodec(path);
-        if (codec == null) {
-            original = fs.open(path);
+        Optional<CompressionCodec> codec = hdfs.getCompressionCodec(path);
+        if (codec.isPresent()) {
+            original = codec.get().createInputStream(hdfs.getFS().open(path));
         }
         else {
-            original = codec.createInputStream(fs.open(path));
+            original = hdfs.getFS().open(path);
         }
         return new HdfsPartialFileInputStream(original, partialFile.getStart(), partialFile.getEnd());
-    }
-
-    private FileSystem getFs(final PluginTask task)
-        throws IOException
-    {
-        if (fs == null) {
-            setFs(task);
-            return fs;
-        }
-        else {
-            return fs;
-        }
-    }
-
-    private FileSystem setFs(final PluginTask task)
-            throws IOException
-    {
-        Configuration configuration = new Configuration();
-
-        for (String configFile : task.getConfigFiles()) {
-            File file = new File(configFile);
-            configuration.addResource(file.toURI().toURL());
-        }
-
-        for (Map.Entry<String, String> entry : task.getConfig().entrySet()) {
-            configuration.set(entry.getKey(), entry.getValue());
-        }
-
-        // For debug
-        for (Map.Entry<String, String> entry : configuration) {
-            logger.trace("{}: {}", entry.getKey(), entry.getValue());
-        }
-        logger.debug("Resource Files: {}", configuration);
-
-        fs = FileSystem.get(configuration);
-        return fs;
-    }
-
-    private CompressionCodecFactory getCodecFactory(PluginTask task)
-            throws MalformedURLException
-    {
-        Configuration configuration = new Configuration();
-
-        for (String configFile : task.getConfigFiles()) {
-            File file = new File(configFile);
-            configuration.addResource(file.toURI().toURL());
-        }
-
-        for (Map.Entry<String, String> entry : task.getConfig().entrySet()) {
-            configuration.set(entry.getKey(), entry.getValue());
-        }
-
-        return new CompressionCodecFactory(configuration);
-    }
-
-    @VisibleForTesting
-    String strftime(final PluginTask task, final String format, final int rewindSeconds)
-    {
-        String script = String.format("(Time.now - %d).strftime('%s')", rewindSeconds, format);
-        return task.getJRuby().runScriptlet(script).toString();
-    }
-
-    private List<String> buildFileList(final FileSystem fs, final String pathString)
-            throws IOException
-    {
-        List<String> fileList = new ArrayList<>();
-        Path rootPath = new Path(pathString);
-
-        final FileStatus[] entries = fs.globStatus(rootPath);
-        // `globStatus` does not throw PathNotFoundException.
-        // return null instead.
-        // see: https://github.com/apache/hadoop/blob/branch-2.7.0/hadoop-common-project/hadoop-common/src/main/java/org/apache/hadoop/fs/Globber.java#L286
-        if (entries == null) {
-            return fileList;
-        }
-
-        for (FileStatus entry : entries) {
-            if (entry.isDirectory()) {
-                fileList.addAll(lsr(fs, entry));
-            }
-            else {
-                fileList.add(entry.getPath().toString());
-            }
-        }
-
-        return fileList;
-    }
-
-    private List<String> lsr(final FileSystem fs, FileStatus status)
-            throws IOException
-    {
-        List<String> fileList = new ArrayList<>();
-        if (status.isDirectory()) {
-            for (FileStatus entry : fs.listStatus(status.getPath())) {
-                fileList.addAll(lsr(fs, entry));
-            }
-        }
-        else {
-            fileList.add(status.getPath().toString());
-        }
-        return fileList;
-    }
-
-    private List<HdfsPartialFile> allocateHdfsFilesToTasks(final PluginTask task, final FileSystem fs, final List<String> fileList)
-            throws IOException
-    {
-        List<Path> pathList = Lists.transform(fileList, new Function<String, Path>()
-        {
-            @Nullable
-            @Override
-            public Path apply(@Nullable String input)
-            {
-                return new Path(input);
-            }
-        });
-
-        long totalFileLength = 0;
-        for (Path path : pathList) {
-            totalFileLength += fs.getFileStatus(path).getLen();
-        }
-
-        // TODO: optimum allocation of resources
-        long approximateNumPartitions =
-                (task.getApproximateNumPartitions() <= 0) ? Runtime.getRuntime().availableProcessors() : task.getApproximateNumPartitions();
-        long partitionSizeByOneTask = totalFileLength / approximateNumPartitions;
-        if (partitionSizeByOneTask <= 0) {
-            partitionSizeByOneTask = 1;
-        }
-
-        List<HdfsPartialFile> hdfsPartialFiles = new ArrayList<>();
-        for (Path path : pathList) {
-            long fileLength = 0;
-            CompressionCodec codec = getCodecFactory(task).getCodec(path);
-            if (codec == null) {
-                fileLength = fs.getFileStatus(path).getLen();
-            }
-            else if (!task.getUseCompressionCodec()) {
-                fileLength = fs.getFileStatus(path).getLen();
-            }
-            else {
-                InputStream i = codec.createInputStream(fs.open(path));
-                while (i.read() > 0) {
-                    fileLength++;
-                }
-            }
-            logger.info("file: {}, length: {}", path, fileLength);
-            // long fileLength = fs.getFileStatus(path).getLen(); // declare `fileLength` here because this is used below.
-            if (fileLength <= 0) {
-                logger.info("embulk-input-hdfs: Skip the 0 byte target file: {}", path);
-                continue;
-            }
-
-            long numPartitions;
-            if (path.toString().endsWith(".gz") || path.toString().endsWith(".bz2") || path.toString().endsWith(".lzo")) {
-                if (task.getUseCompressionCodec()) {
-                    numPartitions = ((fileLength - 1) / partitionSizeByOneTask) + 1;
-                }
-                else {
-                    numPartitions = 1;
-                }
-            }
-            else if (!task.getPartition()) {
-                numPartitions = 1;
-            }
-            else {
-                numPartitions = ((fileLength - 1) / partitionSizeByOneTask) + 1;
-            }
-
-            HdfsFilePartitioner partitioner = new HdfsFilePartitioner(fs, path, numPartitions, fileLength);
-            hdfsPartialFiles.addAll(partitioner.getHdfsPartialFiles());
-        }
-
-        return hdfsPartialFiles;
     }
 }
