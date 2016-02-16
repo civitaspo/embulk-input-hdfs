@@ -78,18 +78,20 @@ int partitionSizeByOneTask = totalFileLength / approximateNumPartitions;
 ...
 */
 
-    int numPartitions;
-    if (path.toString().endsWith(".gz") || path.toString().endsWith(".bz2") || path.toString().endsWith(".lzo")) {
-        // if the file is compressed, skip partitioning.
-        numPartitions = 1;
+    long numPartitions;
+    if (task.getPartition()) {
+        if (file.canDecompress()) {
+            numPartitions = ((fileLength - 1) / partitionSizeByOneTask) + 1;
+        }
+        else if (file.getCodec() != null) { // if not null, the file is compressed.
+            numPartitions = 1;
+        }
+        else {
+            numPartitions = ((fileLength - 1) / partitionSizeByOneTask) + 1;
+        }
     }
-    else if (!task.getPartition()) {
-        // if no partition mode, skip partitioning.
-        numPartitions = 1;
-    } 
     else {
-        // equalize the file size per task as much as possible.
-        numPartitions = ((fileLength - 1) / partitionSizeByOneTask) + 1;
+        numPartitions = 1;
     }
 
 /*
