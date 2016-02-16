@@ -12,6 +12,7 @@ import org.embulk.config.ConfigSource;
 import org.embulk.config.TaskReport;
 import org.embulk.config.TaskSource;
 import org.embulk.input.hdfs.HdfsFileInputPlugin.PluginTask;
+import org.embulk.input.hdfs.file.HDFSPartialFile;
 import org.embulk.spi.Exec;
 import org.embulk.spi.FileInputPlugin;
 import org.embulk.spi.FileInputRunner;
@@ -69,6 +70,8 @@ public class TestHdfsFileInputPlugin
         assertEquals(true, task.getPartition());
         assertEquals(0, task.getRewindSeconds());
         assertEquals(-1, task.getApproximateNumPartitions());
+        assertEquals(0, task.getSkipHeaderLines());
+        assertEquals(false, task.getDecompression());
     }
 
     @Test(expected = ConfigException.class)
@@ -99,17 +102,19 @@ public class TestHdfsFileInputPlugin
                     }
                 });
 
-                List<String> resultFList = Lists.transform(task.getFiles(), new Function<HdfsPartialFile, String>()
+                List<String> resultFList = Lists.transform(plugin.getHDFSPartialFiles(), new Function<HDFSPartialFile, String>()
                 {
                     @Nullable
                     @Override
-                    public String apply(@Nullable HdfsPartialFile input)
+                    public String apply(@Nullable HDFSPartialFile input)
                     {
                         assert input != null;
-                        return input.getPath();
+                        return input.getPath().toString();
                     }
                 });
-                assertEquals(fileList, resultFList);
+
+                assertEquals(fileList.size(), resultFList.size());
+                assert fileList.containsAll(resultFList);
                 return emptyTaskReports(taskCount);
             }
         });
@@ -120,8 +125,9 @@ public class TestHdfsFileInputPlugin
     {
         ConfigSource config = getConfigWithDefaultValues();
         config.set("num_partitions", 10);
+        config.set("decompression", true);
         runner.transaction(config, new Control());
-        assertRecords(config, output);
+        assertRecords(config, output, 12);
     }
 
     @Test
@@ -129,8 +135,31 @@ public class TestHdfsFileInputPlugin
     {
         ConfigSource config = getConfigWithDefaultValues();
         config.set("partition", false);
+        config.set("decompression", true);
         runner.transaction(config, new Control());
-        assertRecords(config, output);
+        assertRecords(config, output, 12);
+    }
+
+    @Test
+    public void testHdfsFileInputByOpenWithoutCompressionCodec()
+    {
+        ConfigSource config = getConfigWithDefaultValues();
+        config.set("partition", false);
+        config.set("path", getClass().getResource("/sample_01.csv").getPath());
+        runner.transaction(config, new Control());
+        assertRecords(config, output, 4);
+    }
+
+    @Test
+    public void testStrftime()
+    {
+        ConfigSource config = getConfigWithDefaultValues();
+        config.set("path", "/tmp/%Y-%m-%d");
+        config.set("rewind_seconds", 86400);
+        PluginTask task = config.loadConfig(PluginTask.class);
+        String result = plugin.strftime(task, task.getPath(), task.getRewindSeconds());
+        String expected = task.getJRuby().runScriptlet("(Time.now - 86400).strftime('/tmp/%Y-%m-%d')").toString();
+        assertEquals(expected, result);
     }
 
     private class Control
@@ -201,10 +230,10 @@ public class TestHdfsFileInputPlugin
         return builder.build();
     }
 
-    private void assertRecords(ConfigSource config, MockPageOutput output)
+    private void assertRecords(ConfigSource config, MockPageOutput output, long size)
     {
         List<Object[]> records = getRecords(config, output);
-        assertEquals(8, records.size());
+        assertEquals(size, records.size());
         {
             Object[] record = records.get(0);
             assertEquals(1L, record[0]);
