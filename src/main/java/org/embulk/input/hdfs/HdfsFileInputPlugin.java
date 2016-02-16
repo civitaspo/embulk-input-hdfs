@@ -119,13 +119,13 @@ public class HdfsFileInputPlugin
     }
 
     @VisibleForTesting
-    public void setHDFSPartialFiles(List<HDFSPartialFile> hdfsPartialFiles)
+    void setHDFSPartialFiles(List<HDFSPartialFile> hdfsPartialFiles)
     {
         hdfsPartialFilesContainer = Optional.of(hdfsPartialFiles);
     }
 
     @VisibleForTesting
-    public List<HDFSPartialFile> getHDFSPartialFiles()
+    List<HDFSPartialFile> getHDFSPartialFiles()
     {
         return hdfsPartialFilesContainer.get();
     }
