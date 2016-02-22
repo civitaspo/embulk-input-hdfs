@@ -12,7 +12,6 @@ import org.embulk.config.ConfigSource;
 import org.embulk.config.TaskReport;
 import org.embulk.config.TaskSource;
 import org.embulk.input.hdfs.HdfsFileInputPlugin.PluginTask;
-import org.embulk.input.hdfs.file.HDFSPartialFile;
 import org.embulk.spi.Exec;
 import org.embulk.spi.FileInputPlugin;
 import org.embulk.spi.FileInputRunner;
@@ -31,6 +30,7 @@ import javax.annotation.Nullable;
 
 import java.io.File;
 import java.util.ArrayList;
+import java.util.Iterator;
 import java.util.List;
 
 import static org.junit.Assert.assertEquals;
@@ -102,17 +102,12 @@ public class TestHdfsFileInputPlugin
                     }
                 });
 
-                List<String> resultFList = Lists.transform(plugin.getHDFSPartialFiles(), new Function<HDFSPartialFile, String>()
-                {
-                    @Nullable
-                    @Override
-                    public String apply(@Nullable HDFSPartialFile input)
-                    {
-                        assert input != null;
-                        return input.getPath().toString();
+                List<String> resultFList = Lists.newArrayList();
+                for (int i = 0; i < task.getPartialFileList().getTaskCount();i++) {
+                    for (PartialFile partialFile : task.getPartialFileList().get(i)) {
+                        resultFList.add(partialFile.getPath().toString());
                     }
-                });
-
+                }
                 assertEquals(fileList.size(), resultFList.size());
                 assert fileList.containsAll(resultFList);
                 return emptyTaskReports(taskCount);
@@ -157,7 +152,7 @@ public class TestHdfsFileInputPlugin
         config.set("path", "/tmp/%Y-%m-%d");
         config.set("rewind_seconds", 86400);
         PluginTask task = config.loadConfig(PluginTask.class);
-        String result = plugin.strftime(task, task.getPath(), task.getRewindSeconds());
+        String result = plugin.strftime(task.getJRuby(), task.getPath(), task.getRewindSeconds());
         String expected = task.getJRuby().runScriptlet("(Time.now - 86400).strftime('/tmp/%Y-%m-%d')").toString();
         assertEquals(expected, result);
     }
