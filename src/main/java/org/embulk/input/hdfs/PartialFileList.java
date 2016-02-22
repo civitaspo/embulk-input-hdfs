@@ -26,6 +26,8 @@ import com.fasterxml.jackson.annotation.JsonCreator;
 
 /**
  * Created by takahiro.nakayama on 2/20/16.
+ * Ported from https://github.com/embulk/embulk-input-s3/blob/master/embulk-input-s3/src/main/java/org/embulk/input/s3/FileList.java
+ * and Modified for this package.
  */
 public class PartialFileList
 {
@@ -45,46 +47,31 @@ public class PartialFileList
         long getMinTaskSize();
     }
 
-//    public static class Entry
-//    {
-//        private int index;
-//        private long size;
-//
-//        @JsonCreator
-//        public Entry(
-//                @JsonProperty("index") int index,
-//                @JsonProperty("size") long size)
-//        {
-//            this.index = index;
-//            this.size = size;
-//        }
-//
-//        @JsonProperty("index")
-//        public int getIndex() { return index; }
-//
-//        @JsonProperty("size")
-//        public long getSize() { return size; }
-//    }
-
     public static class Entry
     {
         private int index;
         private long start;
         private long end;
+        private boolean canDecompress;
 
         @JsonCreator
         public Entry(
                 @JsonProperty("index") int index,
                 @JsonProperty("start") long start,
-                @JsonProperty("end") long end)
+                @JsonProperty("end") long end,
+                @JsonProperty("can_decompress") boolean canDecompress)
         {
             this.index = index;
             this.start = start;
             this.end = end;
+            this.canDecompress = canDecompress;
         }
 
         @JsonProperty("index")
-        public int getIndex() { return index; }
+        public int getIndex()
+        {
+            return index;
+        }
 
         @JsonProperty("start")
         public long getStart()
@@ -98,8 +85,17 @@ public class PartialFileList
             return end;
         }
 
+        @JsonProperty("can_decompress")
+        public boolean getCanDecompress()
+        {
+            return canDecompress;
+        }
+
         @JsonIgnore
-        public long getSize() { return getEnd() - getStart(); }
+        public long getSize()
+        {
+            return getEnd() - getStart();
+        }
     }
 
     public static class Builder
@@ -171,7 +167,7 @@ public class PartialFileList
         }
 
         // returns true if this file is used
-        public synchronized boolean add(String path, long start, long end)
+        public synchronized boolean add(String path, long start, long end, boolean canDecompress)
         {
             // TODO throw IllegalStateException if stream is already closed
 
@@ -184,7 +180,7 @@ public class PartialFileList
             }
 
             int index = entries.size();
-            entries.add(new Entry(index, start, end));
+            entries.add(new Entry(index, start, end, canDecompress));
 
             byte[] data = path.getBytes(StandardCharsets.UTF_8);
             castBuffer.putInt(0, data.length);
@@ -192,8 +188,8 @@ public class PartialFileList
                 stream.write(castBuffer.array());
                 stream.write(data);
             }
-            catch (IOException ex) {
-                throw Throwables.propagate(ex);
+            catch (IOException e) {
+                throw Throwables.propagate(e);
             }
 
             last = path;
@@ -205,8 +201,8 @@ public class PartialFileList
             try {
                 stream.close();
             }
-            catch (IOException ex) {
-                throw Throwables.propagate(ex);
+            catch (IOException e) {
+                throw Throwables.propagate(e);
             }
             return new PartialFileList(binary.toByteArray(), getSplits(entries), Optional.fromNullable(last));
         }
@@ -237,7 +233,6 @@ public class PartialFileList
     private final Optional<String> last;
 
     @JsonCreator
-    @Deprecated
     public PartialFileList(
             @JsonProperty("data") byte[] data,
             @JsonProperty("tasks") List<List<Entry>> tasks,
@@ -269,6 +264,24 @@ public class PartialFileList
         return new EntryList(data, tasks.get(i));
     }
 
+    @JsonProperty("data")
+    public byte[] getData()
+    {
+        return data;
+    }
+
+    @JsonProperty("tasks")
+    public List<List<Entry>> getTasks()
+    {
+        return tasks;
+    }
+
+    @JsonProperty("last")
+    public Optional<String> getLast()
+    {
+        return last;
+    }
+
     private class EntryList
             extends AbstractList<PartialFile>
     {
@@ -286,8 +299,8 @@ public class PartialFileList
             try {
                 this.stream = new BufferedInputStream(new GZIPInputStream(new ByteArrayInputStream(data)));
             }
-            catch (IOException ex) {
-                throw Throwables.propagate(ex);
+            catch (IOException e) {
+                throw Throwables.propagate(e);
             }
             this.current = 0;
         }
@@ -295,24 +308,25 @@ public class PartialFileList
         @Override
         public synchronized PartialFile get(int i)
         {
-            Entry e = entries.get(i);
-            if (e.getIndex() < current) {
+            Entry entry = entries.get(i);
+            if (entry.getIndex() < current) {
                 // rewind to the head
                 try {
                     stream.close();
                     stream = new BufferedInputStream(new GZIPInputStream(new ByteArrayInputStream(data)));
                 }
-                catch (IOException ex) {
-                    throw Throwables.propagate(ex);
+                catch (IOException e) {
+                    throw Throwables.propagate(e);
                 }
                 current = 0;
             }
 
-            while (current < e.getIndex()) {
+            while (current < entry.getIndex()) {
                 readNext();
             }
             // now current == e.getIndex()
-            return readNextString();
+            return new PartialFile(readNextString(),
+                    entry.getStart(), entry.getEnd(), entry.getCanDecompress());
         }
 
         @Override
@@ -333,8 +347,8 @@ public class PartialFileList
 
                 return b;
             }
-            catch (IOException ex) {
-                throw Throwables.propagate(ex);
+            catch (IOException e) {
+                throw Throwables.propagate(e);
             }
         }
 
