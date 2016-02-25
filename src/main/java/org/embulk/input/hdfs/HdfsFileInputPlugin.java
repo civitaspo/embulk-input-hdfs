@@ -2,6 +2,7 @@ package org.embulk.input.hdfs;
 
 import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.Optional;
+import com.google.common.base.Throwables;
 import com.google.common.collect.Lists;
 import com.google.common.collect.Maps;
 import org.apache.hadoop.conf.Configuration;
@@ -10,6 +11,8 @@ import org.apache.hadoop.fs.FileSystem;
 import org.apache.hadoop.fs.Path;
 import org.apache.hadoop.fs.PathIOException;
 import org.apache.hadoop.fs.PathNotFoundException;
+import org.apache.hadoop.io.compress.CompressionCodec;
+import org.apache.hadoop.io.compress.CompressionCodecFactory;
 import org.embulk.config.Config;
 import org.embulk.config.ConfigDefault;
 import org.embulk.config.ConfigDiff;
@@ -18,21 +21,17 @@ import org.embulk.config.ConfigSource;
 import org.embulk.config.Task;
 import org.embulk.config.TaskReport;
 import org.embulk.config.TaskSource;
-import org.embulk.input.hdfs.file.HDFSFile;
-import org.embulk.input.hdfs.file.HDFSPartialFile;
-import org.embulk.input.hdfs.util.ConfigurationFactory;
-import org.embulk.input.hdfs.util.HDFSFileFactory;
-import org.embulk.input.hdfs.util.HDFSFilePartitioner;
+import org.embulk.spi.BufferAllocator;
 import org.embulk.spi.Exec;
 import org.embulk.spi.FileInputPlugin;
 import org.embulk.spi.TransactionalFileInput;
-import org.embulk.spi.util.InputStreamTransactionalFileInput;
+import org.embulk.spi.util.InputStreamFileInput;
 import org.jruby.embed.ScriptingContainer;
 import org.slf4j.Logger;
 
 import java.io.IOException;
 import java.io.InputStream;
-import java.util.ArrayList;
+import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 
@@ -40,7 +39,7 @@ public class HdfsFileInputPlugin
         implements FileInputPlugin
 {
     public interface PluginTask
-            extends Task
+            extends Task, PartialFileList.Task
     {
         @Config("config_files")
         @ConfigDefault("[]")
@@ -73,114 +72,95 @@ public class HdfsFileInputPlugin
         @ConfigDefault("false")  // when getting FileInputStream.
         boolean getDecompression();
 
+        PartialFileList getPartialFileList();
+        void setPartialFileList(PartialFileList partialFileList);
+
         @ConfigInject
         ScriptingContainer getJRuby();
+
+        @ConfigInject
+        BufferAllocator getBufferAllocator();
     }
 
     private static final Logger logger = Exec.getLogger(HdfsFileInputPlugin.class);
     private Optional<Configuration> configurationContainer = Optional.absent();
-    private Optional<FileSystem> fsContainer = Optional.absent();
-    private Optional<List<HDFSPartialFile>> hdfsPartialFilesContainer = Optional.absent();
-
-    private void setContainers(PluginTask task)
-    {
-        if (!configurationContainer.isPresent()) {
-            setConfiguration(ConfigurationFactory.fromTask(task));
-        }
-
-        if (!fsContainer.isPresent()) {
-            try {
-                setFileSystem(FileSystem.get(getConfiguration()));
-            }
-            catch (IOException e) {
-                throw new RuntimeException(e);
-            }
-        }
-    }
-
-    private void setConfiguration(Configuration configuration)
-    {
-        configurationContainer = Optional.of(configuration);
-    }
-
-    private Configuration getConfiguration()
-    {
-        return configurationContainer.get();
-    }
-
-    private void setFileSystem(FileSystem fs)
-    {
-        fsContainer = Optional.of(fs);
-    }
-
-    private FileSystem getFS()
-    {
-        return fsContainer.get();
-    }
-
-    @VisibleForTesting
-    void setHDFSPartialFiles(List<HDFSPartialFile> hdfsPartialFiles)
-    {
-        hdfsPartialFilesContainer = Optional.of(hdfsPartialFiles);
-    }
-
-    @VisibleForTesting
-    List<HDFSPartialFile> getHDFSPartialFiles()
-    {
-        return hdfsPartialFilesContainer.get();
-    }
 
     @Override
     public ConfigDiff transaction(ConfigSource config, FileInputPlugin.Control control)
     {
         PluginTask task = config.loadConfig(PluginTask.class);
-        setContainers(task);
+        Configuration configuration = getConfiguration(task);
 
         // listing Files
         try {
-            String pathString = strftime(task, task.getPath(), task.getRewindSeconds());
+            FileSystem fs = getFS(configuration);
+
+            String pathString = strftime(task.getJRuby(), task.getPath(), task.getRewindSeconds());
             Path rootPath = new Path(pathString);
 
-            List<Path> originalFileList = buildFileList(getFS(), rootPath);
+            List<Path> originalFileList = buildOriginalFileList(fs, rootPath);
 
             if (originalFileList.isEmpty()) {
                 throw new PathNotFoundException(pathString);
             }
 
             logger.debug("embulk-input-hdfs: Loading target files: {}", originalFileList);
-            setHDFSPartialFiles(allocateHdfsFilesToNumTasks(task, originalFileList));
+            PartialFileList list = buildPartialFileList(task, originalFileList);
+            task.setPartialFileList(list);
         }
         catch (IOException e) {
             logger.error(e.getMessage());
             throw new RuntimeException(e);
         }
 
-        // log the detail of partial files.
-        for (HDFSPartialFile partialFile : getHDFSPartialFiles()) {
-            logger.debug("embulk-input-hdfs: target file: {}, start: {}, end: {}",
-                    partialFile.getPath(), partialFile.getStart(), partialFile.getEnd());
-        }
-
         // number of processors is same with number of targets
-        int taskCount = getHDFSPartialFiles().size();
+        int taskCount = task.getPartialFileList().getTaskCount();
         logger.info("embulk-input-hdfs: task size: {}", taskCount);
 
         return resume(task.dump(), taskCount, control);
     }
 
-    @VisibleForTesting
-    String strftime(final PluginTask task, final String format, final int rewindSeconds)
+    private Configuration getConfiguration(PluginTask task)
     {
-        String script = String.format("(Time.now - %d).strftime('%s')", rewindSeconds, format);
-        return task.getJRuby().runScriptlet(script).toString();
+        if (configurationContainer.isPresent()) {
+            return configurationContainer.get();
+        }
+
+        ConfigurationBuilder builder = new ConfigurationBuilder();
+        builder.addConfigFiles(task.getConfigFiles());
+        builder.addConfigMap(task.getConfig());
+        configurationContainer = Optional.of(builder.build());
+        return configurationContainer.get();
     }
 
-    private List<Path> buildFileList(FileSystem fs, Path rootPath)
-            throws IOException
+    private FileSystem getFS(Configuration configuration)
+    {
+        try {
+            return FileSystem.get(configuration);
+        }
+        catch (IOException e) {
+            throw Throwables.propagate(e);
+        }
+    }
+
+    @VisibleForTesting
+    String strftime(final ScriptingContainer jruby, final String format, final int rewindSeconds)
+    {
+        String script = String.format("(Time.now - %d).strftime('%s')", rewindSeconds, format);
+        return jruby.runScriptlet(script).toString();
+    }
+
+    private List<Path> buildOriginalFileList(FileSystem fs, Path rootPath)
     {
         List<Path> fileList = Lists.newArrayList();
 
-        final FileStatus[] entries = fs.globStatus(rootPath);
+        final FileStatus[] entries;
+        try {
+            entries = fs.globStatus(rootPath);
+        }
+        catch (IOException e) {
+            throw Throwables.propagate(e);
+        }
         // `globStatus` does not throw PathNotFoundException.
         // return null instead.
         // see: https://github.com/apache/hadoop/blob/branch-2.7.0/hadoop-common-project/hadoop-common/src/main/java/org/apache/hadoop/fs/Globber.java#L286
@@ -190,7 +170,8 @@ public class HdfsFileInputPlugin
 
         for (FileStatus entry : entries) {
             if (entry.isDirectory()) {
-                fileList.addAll(listRecursive(fs, entry));
+                List<Path> subEntries = listRecursive(fs, entry);
+                fileList.addAll(subEntries);
             }
             else {
                 fileList.add(entry.getPath());
@@ -201,11 +182,18 @@ public class HdfsFileInputPlugin
     }
 
     private List<Path> listRecursive(final FileSystem fs, FileStatus status)
-            throws IOException
     {
-        List<Path> fileList = new ArrayList<>();
+        List<Path> fileList = Lists.newArrayList();
         if (status.isDirectory()) {
-            for (FileStatus entry : fs.listStatus(status.getPath())) {
+            FileStatus[] entries;
+            try {
+                entries = fs.listStatus(status.getPath());
+            }
+            catch (IOException e) {
+                throw Throwables.propagate(e);
+            }
+
+            for (FileStatus entry : entries) {
                 fileList.addAll(listRecursive(fs, entry));
             }
         }
@@ -215,29 +203,31 @@ public class HdfsFileInputPlugin
         return fileList;
     }
 
-    private List<HDFSPartialFile> allocateHdfsFilesToNumTasks(PluginTask task, List<Path> pathList)
-            throws IOException
+    private PartialFileList buildPartialFileList(PluginTask task, List<Path> pathList)
     {
-        HDFSFileFactory factory = new HDFSFileFactory(getConfiguration());
-        FileSystem fs = getFS();
+        Configuration configuration = getConfiguration(task);
+        FileSystem fs = getFS(configuration);
+        boolean shouldPartition = task.getPartition();
+        boolean shouldDecompress = task.getDecompression();
 
-        Map<HDFSFile, Long> hdfsFileLengthMap = Maps.newHashMap();
+        Map<Path, Long> pathLengthMap = Maps.newHashMap();
         long totalFileLength = 0;
         for (Path path : pathList) {
-            HDFSFile file = factory.create(path, task.getDecompression());
-            long fileLength = file.getLength(fs);
+            long fileLength = getHdfsFileLength(fs, path, shouldDecompress);
 
             if (fileLength <= 0) {
-                logger.info("`embulk-input-hdfs`: Skip the 0 byte target file: {}", path);
+                logger.info("Skip the 0 byte target file: {}", path);
                 continue;
             }
 
-            hdfsFileLengthMap.put(file, fileLength);
+            pathLengthMap.put(path, fileLength);
             totalFileLength += fileLength;
         }
         if (totalFileLength <= 0) {
-            throw new PathIOException(task.getPath(), "`embulk-input-hdfs`: All files are empty");
+            throw Throwables.propagate(new PathIOException(task.getPath(), "All files are empty"));
         }
+
+        PartialFileList.Builder builder = new PartialFileList.Builder(task);
 
         // TODO: optimum allocation of resources
         final long approximateNumPartitions;
@@ -253,17 +243,16 @@ public class HdfsFileInputPlugin
             partitionSizeByOneTask = 1;
         }
 
-        List<HDFSPartialFile> hdfsPartialFiles = Lists.newArrayList();
-        for (Map.Entry<HDFSFile, Long> entry : hdfsFileLengthMap.entrySet()) {
-            HDFSFile file = entry.getKey();
+        for (Map.Entry<Path, Long> entry : pathLengthMap.entrySet()) {
+            Path path = entry.getKey();
             long fileLength = entry.getValue();
 
             long numPartitions;
-            if (task.getPartition()) {
-                if (file.canDecompress()) {
+            if (shouldPartition) {
+                if (shouldDecompress && getHdfsFileCompressionCodec(fs, path) != null) {
                     numPartitions = ((fileLength - 1) / partitionSizeByOneTask) + 1;
                 }
-                else if (file.getCodec() != null) { // if not null, the file is compressed.
+                else if (getHdfsFileCompressionCodec(fs, path) != null) { // if not null, the file is compressed.
                     numPartitions = 1;
                 }
                 else {
@@ -274,11 +263,60 @@ public class HdfsFileInputPlugin
                 numPartitions = 1;
             }
 
-            HDFSFilePartitioner partitioner = new HDFSFilePartitioner(file, fileLength, numPartitions);
-            hdfsPartialFiles.addAll(partitioner.generateHDFSPartialFiles());
+            for (long i = 0; i < numPartitions; i++) {
+                long start = fileLength * i / numPartitions;
+                long end = fileLength * (i + 1) / numPartitions;
+                if (start < end) {
+                    logger.debug("PartialFile: path {}, start: {}, end: {}", path, start, end);
+                    builder.add(path.toString(), start, end, shouldDecompress && getHdfsFileCompressionCodec(fs, path) != null);
+                }
+            }
         }
 
-        return hdfsPartialFiles;
+        return builder.build();
+    }
+
+    private Long getHdfsFileLength(FileSystem fs, Path path, boolean shouldDecompression)
+    {
+        CompressionCodec codec = getHdfsFileCompressionCodec(fs, path);
+        if (codec == null) {
+            try {
+                return fs.getFileStatus(path).getLen();
+            }
+            catch (IOException e) {
+                throw Throwables.propagate(e);
+            }
+        }
+        else if (!shouldDecompression) {
+            try {
+                return fs.getFileStatus(path).getLen();
+            }
+            catch (IOException e) {
+                throw Throwables.propagate(e);
+            }
+        }
+        else {
+            long fileLength = 0;
+            try (InputStream is = codec.createInputStream(fs.open(path))) {
+                while (is.read() > 0) {
+                    fileLength++;
+                }
+            }
+            catch (IOException e) {
+                throw Throwables.propagate(e);
+            }
+            return fileLength;
+        }
+    }
+
+    private CompressionCodec getHdfsFileCompressionCodec(FileSystem fs, Path path)
+    {
+        return getHdfsFileCompressionCodec(fs.getConf(), path);
+    }
+
+    private CompressionCodec getHdfsFileCompressionCodec(Configuration configuration, Path path)
+    {
+        return new CompressionCodecFactory(configuration).getCodec(path);
     }
 
     @Override
@@ -302,34 +340,59 @@ public class HdfsFileInputPlugin
     public TransactionalFileInput open(TaskSource taskSource, int taskIndex)
     {
         final PluginTask task = taskSource.loadTask(PluginTask.class);
-        setContainers(task);
+        return new HdfsFileInput(task, taskIndex);
+    }
 
-        InputStream input;
-        final HDFSPartialFile file = getHDFSPartialFiles().get(taskIndex);
-        try {
-            if (file.getStart() > 0 && task.getSkipHeaderLines() > 0) {
-                input = file.createInputStreamWithHeaders(getFS(), task.getSkipHeaderLines());
-            }
-            else {
-                input = file.createInputStream(getFS());
-            }
-        }
-        catch (IOException e) {
-            logger.error(e.getMessage());
-            throw new RuntimeException(e);
-        }
+    public class HdfsFileInput
+            extends InputStreamFileInput
+            implements TransactionalFileInput
+    {
 
-        return new InputStreamTransactionalFileInput(Exec.getBufferAllocator(), input)
+        public HdfsFileInput(PluginTask task, int taskIndex)
         {
-            @Override
-            public void abort()
-            { }
+            super(task.getBufferAllocator(), new SingleFileProvider(task, taskIndex));
+        }
 
-            @Override
-            public TaskReport commit()
-            {
-                return Exec.newTaskReport();
+        @Override
+        public void abort()
+        {
+        }
+
+        @Override
+        public TaskReport commit()
+        {
+            return Exec.newTaskReport();
+        }
+    }
+
+    // TODO create single-file InputStreamFileInput utility
+    private class SingleFileProvider
+            implements InputStreamFileInput.Provider
+    {
+        private final FileSystem fs;
+        private final int numHeaderLines;
+        private final Iterator<PartialFile> iterator;
+
+        public SingleFileProvider(PluginTask task, int taskIndex)
+        {
+            this.fs = getFS(getConfiguration(task));
+            this.numHeaderLines = task.getSkipHeaderLines();
+            this.iterator = task.getPartialFileList().get(taskIndex).iterator();
+        }
+
+        @Override
+        public InputStream openNext() throws IOException
+        {
+            if (!iterator.hasNext()) {
+                return null;
             }
-        };
+            PartialFileInputStreamBuilder builder = new PartialFileInputStreamBuilder(fs, iterator.next()).withHeaders(numHeaderLines);
+            return builder.build();
+        }
+
+        @Override
+        public void close()
+        {
+        }
     }
 }

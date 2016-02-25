@@ -12,11 +12,14 @@ local_fs_example: &local_fs_example
     fs.defaultFS: 'file:///'
     fs.hdfs.impl: 'org.apache.hadoop.fs.LocalFileSystem'
     fs.file.impl: 'org.apache.hadoop.fs.LocalFileSystem'
+    io.compression.codecs: 'org.apache.hadoop.io.compress.GzipCodec,org.apache.hadoop.io.compress.DefaultCodec,org.apache.hadoop.io.compress.BZip2Codec'
 
 in:
   type: hdfs
   <<: *local_fs_example
-  path: example/data.csv
+  path: example/data*
+  skip_header_lines: 1
+  decompression: true
   parser:
     charset: UTF-8
     newline: CRLF
