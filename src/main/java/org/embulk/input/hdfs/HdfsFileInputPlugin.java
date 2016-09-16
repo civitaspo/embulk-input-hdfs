@@ -89,6 +89,11 @@ public class HdfsFileInputPlugin
     public ConfigDiff transaction(ConfigSource config, FileInputPlugin.Control control)
     {
         PluginTask task = config.loadConfig(PluginTask.class);
+
+        if (task.getPartition() && task.getDecompression()) {
+            logger.info("Please be sure that the target files cannot be partitioned if they are compressed.");
+        }
+
         Configuration configuration = getConfiguration(task);
 
         // listing Files
