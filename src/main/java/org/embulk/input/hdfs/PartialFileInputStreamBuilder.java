@@ -79,9 +79,6 @@ public class PartialFileInputStreamBuilder
         }
     }
 
-    // memo: compressioncodec使ったinputstream作る奴いても良いような…
-    // じゃないと、headers もおかしくなるような…ならんか
-
     private InputStream createPartialFileInputStream()
     {
         InputStream original = createOriginalFileWrappedInputStream();
