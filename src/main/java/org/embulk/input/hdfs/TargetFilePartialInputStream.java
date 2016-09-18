@@ -1,15 +1,13 @@
 package org.embulk.input.hdfs;
 
+// Ported from https://github.com/hito4t/embulk-input-filesplit/blob/master/src/main/java/org/embulk/input/filesplit/PartialFileInputStream.java
+
 import java.io.BufferedInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.PushbackInputStream;
 
-/**
- * Created by takahiro.nakayama on 2/13/16.
- * ref. https://github.com/hito4t/embulk-input-filesplit/blob/master/src/main/java/org/embulk/input/filesplit/PartialFileInputStream.java
- */
-public class PartialFileInputStream
+public class TargetFilePartialInputStream
     extends InputStream
 {
     private final PushbackInputStream original;
@@ -18,7 +16,7 @@ public class PartialFileInputStream
     private long current;
     private boolean eof;
 
-    public PartialFileInputStream(InputStream original, long start, long end)
+    public TargetFilePartialInputStream(InputStream original, long start, long end)
     {
         this.original = new PushbackInputStream(new BufferedInputStream(original));
         this.start = start;
