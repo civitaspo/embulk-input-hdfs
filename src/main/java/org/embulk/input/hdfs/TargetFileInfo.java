@@ -12,19 +12,19 @@ public class TargetFileInfo
     // private static final long serialVersionUID = 1L; // to suppress warnings?
     private long start;
     private long end;
-    private String pathStr;
+    private String pathString;
     private boolean isDecompressible;
     private boolean isPartitionable;
 
     @JsonCreator
     public TargetFileInfo(
-            @JsonProperty("path_str") String pathStr,
+            @JsonProperty("path_string") String pathString,
             @JsonProperty("start") long start,
             @JsonProperty("end") long end,
             @JsonProperty("is_decompressible") boolean isDecompressible,
             @JsonProperty("is_partitionable") boolean isPartitionable)
     {
-        this.pathStr = pathStr;
+        this.pathString = pathString;
         this.start = start;
         this.end = end;
         this.isDecompressible = isDecompressible;
@@ -55,10 +55,10 @@ public class TargetFileInfo
         return isPartitionable;
     }
 
-    @JsonProperty("path_str")
-    public String getPathStr()
+    @JsonProperty("path_string")
+    public String getPathString()
     {
-        return pathStr;
+        return pathString;
     }
 
     @JsonIgnore

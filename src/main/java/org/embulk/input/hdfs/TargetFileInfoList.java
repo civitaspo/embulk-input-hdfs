@@ -150,7 +150,7 @@ public class TargetFileInfoList
                 return false;
             }
 
-            if (!pathMatchPattern.matcher(targetFileInfo.getPathStr()).find()) {
+            if (!pathMatchPattern.matcher(targetFileInfo.getPathString()).find()) {
                 return false;
             }
 
