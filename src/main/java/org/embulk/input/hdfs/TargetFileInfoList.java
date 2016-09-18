@@ -8,6 +8,7 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.google.common.base.Optional;
 import com.google.common.base.Throwables;
+import org.apache.commons.lang.SerializationUtils;
 import org.embulk.config.Config;
 import org.embulk.config.ConfigDefault;
 import org.embulk.config.ConfigSource;
@@ -20,7 +21,6 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.ByteBuffer;
-import java.nio.charset.StandardCharsets;
 import java.util.AbstractList;
 import java.util.ArrayList;
 import java.util.List;
@@ -72,7 +72,7 @@ public class TargetFileInfoList
         private final ByteArrayOutputStream binary;
         private final OutputStream stream;
         private final List<Entry> entries = new ArrayList<>();
-        private String last = null;
+        private TargetFileInfo last = null;
 
         private int limitCount = Integer.MAX_VALUE;
         private long minTaskSize = 1;
@@ -136,7 +136,7 @@ public class TargetFileInfoList
         }
 
         // returns true if this file is used
-        public synchronized boolean add(String path, long size)
+        public synchronized boolean add(TargetFileInfo targetFileInfo, long size)
         {
             // TODO throw IllegalStateException if stream is already closed
 
@@ -144,14 +144,14 @@ public class TargetFileInfoList
                 return false;
             }
 
-            if (!pathMatchPattern.matcher(path).find()) {
+            if (!pathMatchPattern.matcher(targetFileInfo.getPathStr()).find()) {
                 return false;
             }
 
             int index = entries.size();
             entries.add(new Entry(index, size));
 
-            byte[] data = path.getBytes(StandardCharsets.UTF_8);
+            byte[] data = SerializationUtils.serialize(targetFileInfo);
             castBuffer.putInt(0, data.length);
             try {
                 stream.write(castBuffer.array());
@@ -161,7 +161,7 @@ public class TargetFileInfoList
                 throw Throwables.propagate(ex);
             }
 
-            last = path;
+            last = targetFileInfo;
             return true;
         }
 
@@ -199,14 +199,13 @@ public class TargetFileInfoList
 
     private final byte[] data;
     private final List<List<Entry>> tasks;
-    private final Optional<String> last;
+    private final Optional<TargetFileInfo> last;
 
     @JsonCreator
-    @Deprecated
     public TargetFileInfoList(
             @JsonProperty("data") byte[] data,
             @JsonProperty("tasks") List<List<Entry>> tasks,
-            @JsonProperty("last") Optional<String> last)
+            @JsonProperty("last") Optional<TargetFileInfo> last)
     {
         this.data = data;
         this.tasks = tasks;
@@ -214,12 +213,12 @@ public class TargetFileInfoList
     }
 
     @JsonIgnore
-    public Optional<String> getLastPath(Optional<String> lastLastPath)
+    public Optional<TargetFileInfo> getLastTargetFileInfo(Optional<TargetFileInfo> targetFileInfo)
     {
         if (last.isPresent()) {
             return last;
         }
-        return lastLastPath;
+        return targetFileInfo;
     }
 
     @JsonIgnore
@@ -229,7 +228,7 @@ public class TargetFileInfoList
     }
 
     @JsonIgnore
-    public List<String> get(int i)
+    public List<TargetFileInfo> get(int i)
     {
         return new EntryList(data, tasks.get(i));
     }
@@ -250,13 +249,13 @@ public class TargetFileInfoList
 
     @JsonProperty("last")
     @Deprecated
-    public Optional<String> getLast()
+    public Optional<TargetFileInfo> getLast()
     {
         return last;
     }
 
     private class EntryList
-            extends AbstractList<String>
+            extends AbstractList<TargetFileInfo>
     {
         private final byte[] data;
         private final List<Entry> entries;
@@ -279,7 +278,7 @@ public class TargetFileInfoList
         }
 
         @Override
-        public synchronized String get(int i)
+        public synchronized TargetFileInfo get(int i)
         {
             Entry e = entries.get(i);
             if (e.getIndex() < current) {
@@ -324,9 +323,9 @@ public class TargetFileInfoList
             }
         }
 
-        private String readNextString()
+        private TargetFileInfo readNextString()
         {
-            return new String(readNext(), StandardCharsets.UTF_8);
+            return (TargetFileInfo) SerializationUtils.deserialize(readNext());
         }
     }
 }
