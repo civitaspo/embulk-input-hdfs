@@ -61,10 +61,16 @@ public class TargetFileInfoList
         }
 
         @JsonProperty("index")
-        public int getIndex() { return index; }
+        public int getIndex()
+        {
+            return index;
+        }
 
         @JsonProperty("size")
-        public long getSize() { return size; }
+        public long getSize()
+        {
+            return size;
+        }
     }
 
     public static class Builder
@@ -75,8 +81,8 @@ public class TargetFileInfoList
         private TargetFileInfo last = null;
 
         private int limitCount = Integer.MAX_VALUE;
-        private long minTaskSize = 1;
-        private Pattern pathMatchPattern;
+        private long minTaskSize = 0L;
+        private Pattern pathMatchPattern = Pattern.compile(".*");
 
         private final ByteBuffer castBuffer = ByteBuffer.allocate(4);
 
