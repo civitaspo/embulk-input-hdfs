@@ -35,16 +35,16 @@ public class TargetFileInputStreamFactory
             throws IOException
     {
         if (t.getIsDecompressible()) {
-            logger.debug("createDecompressedInputStream: {}", t.getPathString());
+            logger.debug("embulk-input-hdfs: createDecompressedInputStream: {}", t.getPathString());
             return createDecompressedInputStream(t);
         }
         else if (t.getIsPartitionable()) {
-            logger.debug("createPartialInputStream: {}, start:{}, end:{}",
+            logger.debug("embulk-input-hdfs: createPartialInputStream: {}, start:{}, end:{}",
                     t.getPathString(), t.getStart(), t.getEnd());
             return createPartialInputStream(t);
         }
         else {
-            logger.debug("createOriginalInputStream: {}", t.getPathString());
+            logger.debug("embulk-input-hdfs: createOriginalInputStream: {}", t.getPathString());
             return createOriginalInputStream(t);
         }
     }
@@ -53,7 +53,7 @@ public class TargetFileInputStreamFactory
             throws IOException
     {
         if (t.getStart() > 0 && t.getNumHeaderLines() > 0) {
-            logger.debug("createInputStreamWithHeaders: {}", t.getPathString());
+            logger.debug("embulk-input-hdfs: createInputStreamWithHeaders: {}", t.getPathString());
             InputStream headers = createHeadersInputStream(t);
             return new SequenceInputStream(headers, original);
         }
@@ -75,11 +75,11 @@ public class TargetFileInputStreamFactory
         CompressionCodecFactory factory = new CompressionCodecFactory(fs.getConf());
         CompressionCodec codec = factory.getCodec(new Path(t.getPathString()));
         if (codec == null) {
-            logger.debug("CompressionCodec:null: {}", t.getPathString());
+            logger.debug("embulk-input-hdfs: CompressionCodec:　null: {}", t.getPathString());
             return original;
         }
         else {
-            logger.debug("CompressionCodec:{}: {}", codec, t.getPathString());
+            logger.debug("embulk-input-hdfs: CompressionCodec:　{}: {}", codec, t.getPathString());
             return codec.createInputStream(original);
         }
     }
