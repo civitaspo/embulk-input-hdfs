@@ -10,11 +10,12 @@ public class TargetFileInfo
     implements Serializable
 {
     // private static final long serialVersionUID = 1L; // to suppress warnings?
-    private long start;
-    private long end;
-    private String pathString;
-    private boolean isDecompressible;
-    private boolean isPartitionable;
+    private final long start;
+    private final long end;
+    private final String pathString;
+    private final boolean isDecompressible;
+    private final boolean isPartitionable;
+    private final int numHeaderLines;
 
     @JsonCreator
     public TargetFileInfo(
@@ -22,13 +23,15 @@ public class TargetFileInfo
             @JsonProperty("start") long start,
             @JsonProperty("end") long end,
             @JsonProperty("is_decompressible") boolean isDecompressible,
-            @JsonProperty("is_partitionable") boolean isPartitionable)
+            @JsonProperty("is_partitionable") boolean isPartitionable,
+            @JsonProperty("num_header_lines") int numHeaderLines)
     {
         this.pathString = pathString;
         this.start = start;
         this.end = end;
         this.isDecompressible = isDecompressible;
         this.isPartitionable = isPartitionable;
+        this.numHeaderLines = numHeaderLines;
     }
 
     @JsonProperty("start")
@@ -61,9 +64,17 @@ public class TargetFileInfo
         return pathString;
     }
 
+    @JsonProperty("num_header_lines")
+    public int getNumHeaderLines()
+    {
+        return numHeaderLines;
+    }
+
     @JsonIgnore
     public long getSize()
     {
+        // NOTE: this size is reference value which
+        //       becomes smaller than raw if the file is compressed.
         return getEnd() - getStart();
     }
 }
