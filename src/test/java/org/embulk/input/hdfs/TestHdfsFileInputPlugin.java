@@ -30,7 +30,6 @@ import javax.annotation.Nullable;
 
 import java.io.File;
 import java.util.ArrayList;
-import java.util.Iterator;
 import java.util.List;
 
 import static org.junit.Assert.assertEquals;
@@ -43,7 +42,6 @@ public class TestHdfsFileInputPlugin
     @Rule
     public ExpectedException exception = ExpectedException.none();
 
-    private Logger logger = runtime.getExec().getLogger(TestHdfsFileInputPlugin.class);
     private HdfsFileInputPlugin plugin;
     private FileInputRunner runner;
     private MockPageOutput output;
@@ -67,11 +65,11 @@ public class TestHdfsFileInputPlugin
         assertEquals(path.toString(), task.getPath());
         assertEquals(Lists.newArrayList(), task.getConfigFiles());
         assertEquals(Maps.newHashMap(), task.getConfig());
-        assertEquals(true, task.getPartition());
+        assertEquals(true, task.getWillPartition());
         assertEquals(0, task.getRewindSeconds());
         assertEquals(-1, task.getApproximateNumPartitions());
         assertEquals(0, task.getSkipHeaderLines());
-        assertEquals(false, task.getDecompression());
+        assertEquals(false, task.getWillDecompress());
     }
 
     @Test(expected = ConfigException.class)
@@ -103,9 +101,9 @@ public class TestHdfsFileInputPlugin
                 });
 
                 List<String> resultFList = Lists.newArrayList();
-                for (int i = 0; i < task.getPartialFileList().getTaskCount();i++) {
-                    for (PartialFile partialFile : task.getPartialFileList().get(i)) {
-                        resultFList.add(partialFile.getPath().toString());
+                for (int i = 0; i < task.getTargetFileInfoList().getTaskCount();i++) {
+                    for (TargetFileInfo targetFileInfo : task.getTargetFileInfoList().get(i)) {
+                        resultFList.add(targetFileInfo.getPathString());
                     }
                 }
                 assertEquals(fileList.size(), resultFList.size());
@@ -152,7 +150,7 @@ public class TestHdfsFileInputPlugin
         config.set("path", "/tmp/%Y-%m-%d");
         config.set("rewind_seconds", 86400);
         PluginTask task = config.loadConfig(PluginTask.class);
-        String result = plugin.strftime(task.getJRuby(), task.getPath(), task.getRewindSeconds());
+        String result = new Strftime(task).format(task.getPath());
         String expected = task.getJRuby().runScriptlet("(Time.now - 86400).strftime('/tmp/%Y-%m-%d')").toString();
         assertEquals(expected, result);
     }
