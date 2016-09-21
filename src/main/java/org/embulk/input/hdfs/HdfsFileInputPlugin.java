@@ -151,8 +151,8 @@ public class HdfsFileInputPlugin
     {
         long totalFileLength = calcTotalFilesLength(statusList);
         if (totalFileLength <= 0) {
-            // TODO: skip this error because other file input plugins have no errors if files are empty.
-            throw new DataException("embulk-input-hdfs: All files are empty: " + task.getPath());
+            logger.warn("embulk-input-hdfs: All files are empty: {}", task.getPath());
+            return TargetFileInfoList.builder(task).build();
         }
 
         long partitionSizeByOneTask = calcApproximatePartitionSizeByOneTask(task, totalFileLength);
