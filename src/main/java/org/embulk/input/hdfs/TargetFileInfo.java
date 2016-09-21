@@ -3,12 +3,106 @@ package org.embulk.input.hdfs;
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.google.common.base.Optional;
+import org.embulk.config.ConfigException;
 
 import java.io.Serializable;
+import java.lang.reflect.Field;
 
 public class TargetFileInfo
     implements Serializable
 {
+    public static class Builder
+    {
+        private Optional<Long> start = Optional.absent();
+        private Optional<Long> end = Optional.absent();
+        private Optional<String> pathString = Optional.absent();
+        private Optional<Boolean> isDecompressible = Optional.absent();
+        private Optional<Boolean> isPartitionable = Optional.absent();
+        private Optional<Integer> numHeaderLines = Optional.absent();
+
+        public Builder()
+        {
+        }
+
+        public Builder start(long start)
+        {
+            this.start = Optional.of(start);
+            return this;
+        }
+
+        public Builder end(long end)
+        {
+            this.end = Optional.of(end);
+            return this;
+        }
+
+        public Builder pathString(String pathString)
+        {
+            this.pathString = Optional.of(pathString);
+            return this;
+        }
+
+        public Builder isDecompressible(boolean isDecompressible)
+        {
+            this.isDecompressible = Optional.of(isDecompressible);
+            return this;
+        }
+
+        public Builder isPartitionable(boolean isPartitionable)
+        {
+            this.isPartitionable = Optional.of(isPartitionable);
+            return this;
+        }
+
+        public Builder numHeaderLines(int numHeaderLines)
+        {
+            this.numHeaderLines = Optional.of(numHeaderLines);
+            return this;
+        }
+
+        public TargetFileInfo build()
+        {
+            try {
+                validate();
+            }
+            catch (IllegalAccessException | IllegalStateException e) {
+                throw new ConfigException(e);
+            }
+
+            return new TargetFileInfo(
+                    pathString.get(), start.get(), end.get(),
+                    isDecompressible.get(), isPartitionable.get(),
+                    numHeaderLines.get());
+        }
+
+        private void validate()
+                throws IllegalAccessException, IllegalStateException
+        {
+            for (Field field : getClass().getDeclaredFields()) {
+                if (field.getType() != Optional.class) {
+                    // for avoiding Z class by JUnit insertion.
+                    continue;
+                }
+                Optional value = (Optional) field.get(this);
+                if (!value.isPresent()) {
+                    String msg = String.format("field:%s is absent", field.getName());
+                    throw new IllegalStateException(msg);
+                }
+            }
+
+            if (isDecompressible.get() && isPartitionable.get()) {
+                String msg = String.format("IllegalState: isDecompressible is true and isPartitionable is true: %s", pathString.get());
+                throw new IllegalStateException(msg);
+            }
+
+            if (isDecompressible.get() && start.get() != 0) {
+                String msg = String.format("IllegalState: isDecompressible is true, but start is not 0: %s", pathString.get());
+                throw new IllegalStateException(msg);
+            }
+        }
+    }
+
     // private static final long serialVersionUID = 1L; // to suppress warnings?
     private final long start;
     private final long end;
@@ -18,7 +112,7 @@ public class TargetFileInfo
     private final int numHeaderLines;
 
     @JsonCreator
-    public TargetFileInfo(
+    private TargetFileInfo(
             @JsonProperty("path_string") String pathString,
             @JsonProperty("start") long start,
             @JsonProperty("end") long end,
