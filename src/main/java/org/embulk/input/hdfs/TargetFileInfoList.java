@@ -142,7 +142,7 @@ public class TargetFileInfoList
         }
 
         // returns true if this file is used
-        public synchronized boolean add(TargetFileInfo targetFileInfo, long size)
+        public synchronized boolean add(TargetFileInfo targetFileInfo)
         {
             // TODO throw IllegalStateException if stream is already closed
 
@@ -155,7 +155,7 @@ public class TargetFileInfoList
             }
 
             int index = entries.size();
-            entries.add(new Entry(index, size));
+            entries.add(new Entry(index, targetFileInfo.getSize()));
 
             byte[] data = SerializationUtils.serialize(targetFileInfo);
             castBuffer.putInt(0, data.length);
