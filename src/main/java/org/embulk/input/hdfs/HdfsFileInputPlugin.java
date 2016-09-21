@@ -170,35 +170,20 @@ public class HdfsFileInputPlugin
                 numPartitions = ((status.getLen() - 1) / partitionSizeByOneTask) + 1;
             }
 
-            if (numPartitions > 1) { // has partitions
-                for (long i = 0; i < numPartitions; i++) {
-                    long start = status.getLen() * i / numPartitions;
-                    long end = status.getLen() * (i + 1) / numPartitions;
-                    if (start < end) {
-                        TargetFileInfo targetFileInfo = new TargetFileInfo.Builder()
-                                .pathString(status.getPath().toString())
-                                .start(start)
-                                .end(end)
-                                .isDecompressible(isDecompressible(task, conf, status)) // false
-                                .isPartitionable(isPartitionable(task, conf, status))   // true
-                                .numHeaderLines(task.getSkipHeaderLines())
-                                .build();
-                        builder.add(targetFileInfo);
-                    }
+            for (long i = 0; i < numPartitions; i++) {
+                long start = status.getLen() * i / numPartitions;
+                long end = status.getLen() * (i + 1) / numPartitions;
+                if (start < end) {
+                    TargetFileInfo targetFileInfo = new TargetFileInfo.Builder()
+                            .pathString(status.getPath().toString())
+                            .start(start)
+                            .end(end)
+                            .isDecompressible(isDecompressible(task, conf, status))
+                            .isPartitionable(isPartitionable(task, conf, status))
+                            .numHeaderLines(task.getSkipHeaderLines())
+                            .build();
+                    builder.add(targetFileInfo);
                 }
-            }
-            else {
-                // has no partition
-                // the file is compressed or no partition option is selected.
-                TargetFileInfo targetFileInfo = new TargetFileInfo.Builder()
-                        .pathString(status.getPath().toString())
-                        .start(0L)
-                        .end(status.getLen())
-                        .isDecompressible(isDecompressible(task, conf, status)) // true or false
-                        .isPartitionable(isPartitionable(task, conf, status))   // false
-                        .numHeaderLines(task.getSkipHeaderLines())
-                        .build();
-                builder.add(targetFileInfo);
             }
         }
         return builder.build();
