@@ -77,23 +77,26 @@ int partitionSizeByOneTask = totalFileLength / approximateNumPartitions;
 /*
 ...
 */
+            long numPartitions = 1; // default is no partition.
+            if (isPartitionable(task, conf, status)) { // partition: true and (decompression: false or CompressionCodec is null)
+                numPartitions = ((status.getLen() - 1) / partitionSizeByOneTask) + 1;
+            }
 
-    long numPartitions;
-    if (task.getPartition()) {
-        if (file.canDecompress()) {
-            numPartitions = ((fileLength - 1) / partitionSizeByOneTask) + 1;
-        }
-        else if (file.getCodec() != null) { // if not null, the file is compressed.
-            numPartitions = 1;
-        }
-        else {
-            numPartitions = ((fileLength - 1) / partitionSizeByOneTask) + 1;
-        }
-    }
-    else {
-        numPartitions = 1;
-    }
-
+            for (long i = 0; i < numPartitions; i++) {
+                long start = status.getLen() * i / numPartitions;
+                long end = status.getLen() * (i + 1) / numPartitions;
+                if (start < end) {
+                    TargetFileInfo targetFileInfo = new TargetFileInfo.Builder()
+                            .pathString(status.getPath().toString())
+                            .start(start)
+                            .end(end)
+                            .isDecompressible(isDecompressible(task, conf, status))
+                            .isPartitionable(isPartitionable(task, conf, status))
+                            .numHeaderLines(task.getSkipHeaderLines())
+                            .build();
+                    builder.add(targetFileInfo);
+                }
+            }
 /*
 ...
 */
