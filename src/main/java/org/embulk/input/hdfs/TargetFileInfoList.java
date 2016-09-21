@@ -219,6 +219,12 @@ public class TargetFileInfoList
     }
 
     @JsonIgnore
+    public static TargetFileInfoList.Builder builder(Task task)
+    {
+        return new TargetFileInfoList.Builder(task);
+    }
+
+    @JsonIgnore
     public Optional<TargetFileInfo> getLastTargetFileInfo(Optional<TargetFileInfo> targetFileInfo)
     {
         if (last.isPresent()) {
