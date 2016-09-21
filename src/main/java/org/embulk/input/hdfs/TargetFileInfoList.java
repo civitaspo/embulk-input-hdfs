@@ -1,35 +1,34 @@
 package org.embulk.input.hdfs;
 
-import java.util.List;
-import java.util.AbstractList;
-import java.util.ArrayList;
-import java.util.zip.GZIPInputStream;
-import java.util.zip.GZIPOutputStream;
-import java.util.regex.Pattern;
-import java.io.InputStream;
-import java.io.OutputStream;
-import java.io.BufferedOutputStream;
-import java.io.BufferedInputStream;
-import java.io.ByteArrayInputStream;
-import java.io.ByteArrayOutputStream;
-import java.io.IOException;
-import java.nio.ByteBuffer;
-import java.nio.charset.StandardCharsets;
+// Ported from https://github.com/embulk/embulk-input-s3/blob/b546158123a734acf0785d61400c69fcdd910ed6/embulk-input-s3/src/main/java/org/embulk/input/s3/FileList.java
+// and Modified for this package.
+
+import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonProperty;
+import com.google.common.base.Optional;
+import com.google.common.base.Throwables;
+import org.apache.commons.lang.SerializationUtils;
 import org.embulk.config.Config;
 import org.embulk.config.ConfigDefault;
 import org.embulk.config.ConfigSource;
-import com.google.common.base.Throwables;
-import com.google.common.base.Optional;
-import com.fasterxml.jackson.annotation.JsonProperty;
-import com.fasterxml.jackson.annotation.JsonIgnore;
-import com.fasterxml.jackson.annotation.JsonCreator;
 
-/**
- * Created by takahiro.nakayama on 2/20/16.
- * Ported from https://github.com/embulk/embulk-input-s3/blob/master/embulk-input-s3/src/main/java/org/embulk/input/s3/FileList.java
- * and Modified for this package.
- */
-public class PartialFileList
+import java.io.BufferedInputStream;
+import java.io.BufferedOutputStream;
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.nio.ByteBuffer;
+import java.util.AbstractList;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.regex.Pattern;
+import java.util.zip.GZIPInputStream;
+import java.util.zip.GZIPOutputStream;
+
+public class TargetFileInfoList
 {
     public interface Task
     {
@@ -50,21 +49,15 @@ public class PartialFileList
     public static class Entry
     {
         private int index;
-        private long start;
-        private long end;
-        private boolean canDecompress;
+        private long size;
 
         @JsonCreator
         public Entry(
                 @JsonProperty("index") int index,
-                @JsonProperty("start") long start,
-                @JsonProperty("end") long end,
-                @JsonProperty("can_decompress") boolean canDecompress)
+                @JsonProperty("size") long size)
         {
             this.index = index;
-            this.start = start;
-            this.end = end;
-            this.canDecompress = canDecompress;
+            this.size = size;
         }
 
         @JsonProperty("index")
@@ -73,28 +66,10 @@ public class PartialFileList
             return index;
         }
 
-        @JsonProperty("start")
-        public long getStart()
-        {
-            return start;
-        }
-
-        @JsonProperty("end")
-        public long getEnd()
-        {
-            return end;
-        }
-
-        @JsonProperty("can_decompress")
-        public boolean getCanDecompress()
-        {
-            return canDecompress;
-        }
-
-        @JsonIgnore
+        @JsonProperty("size")
         public long getSize()
         {
-            return getEnd() - getStart();
+            return size;
         }
     }
 
@@ -103,11 +78,11 @@ public class PartialFileList
         private final ByteArrayOutputStream binary;
         private final OutputStream stream;
         private final List<Entry> entries = new ArrayList<>();
-        private String last = null;
+        private TargetFileInfo last = null;
 
         private int limitCount = Integer.MAX_VALUE;
-        private long minTaskSize = 1;
-        private Pattern pathMatchPattern;
+        private long minTaskSize = 0L;
+        private Pattern pathMatchPattern = Pattern.compile(".*");
 
         private final ByteBuffer castBuffer = ByteBuffer.allocate(4);
 
@@ -167,7 +142,7 @@ public class PartialFileList
         }
 
         // returns true if this file is used
-        public synchronized boolean add(String path, long start, long end, boolean canDecompress)
+        public synchronized boolean add(TargetFileInfo targetFileInfo)
         {
             // TODO throw IllegalStateException if stream is already closed
 
@@ -175,36 +150,36 @@ public class PartialFileList
                 return false;
             }
 
-            if (!pathMatchPattern.matcher(path).find()) {
+            if (!pathMatchPattern.matcher(targetFileInfo.getPathString()).find()) {
                 return false;
             }
 
             int index = entries.size();
-            entries.add(new Entry(index, start, end, canDecompress));
+            entries.add(new Entry(index, targetFileInfo.getSize()));
 
-            byte[] data = path.getBytes(StandardCharsets.UTF_8);
+            byte[] data = SerializationUtils.serialize(targetFileInfo);
             castBuffer.putInt(0, data.length);
             try {
                 stream.write(castBuffer.array());
                 stream.write(data);
             }
-            catch (IOException e) {
-                throw Throwables.propagate(e);
+            catch (IOException ex) {
+                throw Throwables.propagate(ex);
             }
 
-            last = path;
+            last = targetFileInfo;
             return true;
         }
 
-        public PartialFileList build()
+        public TargetFileInfoList build()
         {
             try {
                 stream.close();
             }
-            catch (IOException e) {
-                throw Throwables.propagate(e);
+            catch (IOException ex) {
+                throw Throwables.propagate(ex);
             }
-            return new PartialFileList(binary.toByteArray(), getSplits(entries), Optional.fromNullable(last));
+            return new TargetFileInfoList(binary.toByteArray(), getSplits(entries), Optional.fromNullable(last));
         }
 
         private List<List<Entry>> getSplits(List<Entry> all)
@@ -230,13 +205,13 @@ public class PartialFileList
 
     private final byte[] data;
     private final List<List<Entry>> tasks;
-    private final Optional<String> last;
+    private final Optional<TargetFileInfo> last;
 
     @JsonCreator
-    public PartialFileList(
+    public TargetFileInfoList(
             @JsonProperty("data") byte[] data,
             @JsonProperty("tasks") List<List<Entry>> tasks,
-            @JsonProperty("last") Optional<String> last)
+            @JsonProperty("last") Optional<TargetFileInfo> last)
     {
         this.data = data;
         this.tasks = tasks;
@@ -244,12 +219,18 @@ public class PartialFileList
     }
 
     @JsonIgnore
-    public Optional<String> getLastPath(Optional<String> lastLastPath)
+    public static TargetFileInfoList.Builder builder(Task task)
+    {
+        return new TargetFileInfoList.Builder(task);
+    }
+
+    @JsonIgnore
+    public Optional<TargetFileInfo> getLastTargetFileInfo(Optional<TargetFileInfo> targetFileInfo)
     {
         if (last.isPresent()) {
             return last;
         }
-        return lastLastPath;
+        return targetFileInfo;
     }
 
     @JsonIgnore
@@ -259,31 +240,34 @@ public class PartialFileList
     }
 
     @JsonIgnore
-    public List<PartialFile> get(int i)
+    public List<TargetFileInfo> get(int i)
     {
         return new EntryList(data, tasks.get(i));
     }
 
     @JsonProperty("data")
+    @Deprecated
     public byte[] getData()
     {
         return data;
     }
 
     @JsonProperty("tasks")
+    @Deprecated
     public List<List<Entry>> getTasks()
     {
         return tasks;
     }
 
     @JsonProperty("last")
-    public Optional<String> getLast()
+    @Deprecated
+    public Optional<TargetFileInfo> getLast()
     {
         return last;
     }
 
     private class EntryList
-            extends AbstractList<PartialFile>
+            extends AbstractList<TargetFileInfo>
     {
         private final byte[] data;
         private final List<Entry> entries;
@@ -299,34 +283,33 @@ public class PartialFileList
             try {
                 this.stream = new BufferedInputStream(new GZIPInputStream(new ByteArrayInputStream(data)));
             }
-            catch (IOException e) {
-                throw Throwables.propagate(e);
+            catch (IOException ex) {
+                throw Throwables.propagate(ex);
             }
             this.current = 0;
         }
 
         @Override
-        public synchronized PartialFile get(int i)
+        public synchronized TargetFileInfo get(int i)
         {
-            Entry entry = entries.get(i);
-            if (entry.getIndex() < current) {
+            Entry e = entries.get(i);
+            if (e.getIndex() < current) {
                 // rewind to the head
                 try {
                     stream.close();
                     stream = new BufferedInputStream(new GZIPInputStream(new ByteArrayInputStream(data)));
                 }
-                catch (IOException e) {
-                    throw Throwables.propagate(e);
+                catch (IOException ex) {
+                    throw Throwables.propagate(ex);
                 }
                 current = 0;
             }
 
-            while (current < entry.getIndex()) {
+            while (current < e.getIndex()) {
                 readNext();
             }
             // now current == e.getIndex()
-            return new PartialFile(readNextString(),
-                    entry.getStart(), entry.getEnd(), entry.getCanDecompress());
+            return readNextString();
         }
 
         @Override
@@ -347,14 +330,14 @@ public class PartialFileList
 
                 return b;
             }
-            catch (IOException e) {
-                throw Throwables.propagate(e);
+            catch (IOException ex) {
+                throw Throwables.propagate(ex);
             }
         }
 
-        private String readNextString()
+        private TargetFileInfo readNextString()
         {
-            return new String(readNext(), StandardCharsets.UTF_8);
+            return (TargetFileInfo) SerializationUtils.deserialize(readNext());
         }
     }
 }
