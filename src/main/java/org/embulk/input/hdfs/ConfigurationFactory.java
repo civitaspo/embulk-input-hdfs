@@ -36,7 +36,7 @@ public class ConfigurationFactory
         Configuration c = new Configuration();
         for (String f : task.getConfigFiles()) {
             try {
-                logger.debug("embulk-input-hdfs: load a config file: {}", f);
+                logger.trace("embulk-input-hdfs: load a config file: {}", f);
                 c.addResource(new File(f).toURI().toURL());
             }
             catch (MalformedURLException e) {
@@ -45,15 +45,15 @@ public class ConfigurationFactory
         }
 
         for (Map.Entry<String, String> entry : task.getConfig().entrySet()) {
-            logger.debug("embulk-input-hdfs: load a config: {}:{}", entry.getKey(), entry.getValue());
+            logger.trace("embulk-input-hdfs: load a config: {}:{}", entry.getKey(), entry.getValue());
             c.set(entry.getKey(), entry.getValue());
         }
 
         // For logging
         for (Map.Entry<String, String> entry : c) {
-            logger.trace("embulk-input-hdfs: {}: {}", entry.getKey(), entry.getValue());
+            logger.trace("embulk-input-hdfs: loaded: {}: {}", entry.getKey(), entry.getValue());
         }
-        logger.trace("embulk-input-hdfs: Resource Files: {}", c);
+        logger.trace("embulk-input-hdfs: loaded files: {}", c);
 
         return c;
     }
