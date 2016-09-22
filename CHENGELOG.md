@@ -1,3 +1,8 @@
+0.3.2 (2016-09-22)
+==================
+- [Change] Change log level for Configuration
+  - https://github.com/civitaspo/embulk-input-hdfs/pull/33
+
 0.3.1 (2016-09-22)
 ==================
 - [Fix] Trim Double-byte space
