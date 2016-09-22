@@ -75,11 +75,11 @@ public class TargetFileInputStreamFactory
         CompressionCodecFactory factory = new CompressionCodecFactory(fs.getConf());
         CompressionCodec codec = factory.getCodec(new Path(t.getPathString()));
         if (codec == null) {
-            logger.debug("embulk-input-hdfs: CompressionCodec:　null: {}", t.getPathString());
+            logger.debug("embulk-input-hdfs: CompressionCodec: null: {}", t.getPathString());
             return original;
         }
         else {
-            logger.debug("embulk-input-hdfs: CompressionCodec:　{}: {}", codec, t.getPathString());
+            logger.debug("embulk-input-hdfs: CompressionCodec: {}: {}", codec, t.getPathString());
             return codec.createInputStream(original);
         }
     }
