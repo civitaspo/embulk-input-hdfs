@@ -1,3 +1,8 @@
+0.3.1 (2016-09-22)
+==================
+- [Fix] Trim Double-byte space
+  - https://github.com/civitaspo/embulk-input-hdfs/pull/31
+
 0.3.0 (2016-09-21)
 ==================
 - [Incompatible Change] Not partitoning if files are compressed
